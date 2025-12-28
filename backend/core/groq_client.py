@@ -437,7 +437,7 @@ def get_groq_manager() -> MultiKeyGroqManager:
 
 
 # Convenience functions for each service
-async def scanner_generate(prompt: str, **kwargs) -> Dict[str, Any]:
+async def scanner_generate(prompt: str = "", **kwargs) -> Dict[str, Any]:
     """Generate using security scanner key."""
     return await groq_manager.generate(
         service=ServiceType.SECURITY_SCANNER,
@@ -446,7 +446,7 @@ async def scanner_generate(prompt: str, **kwargs) -> Dict[str, Any]:
     )
 
 
-async def repo_generate(prompt: str, **kwargs) -> Dict[str, Any]:
+async def repo_generate(prompt: str = "", **kwargs) -> Dict[str, Any]:
     """Generate using repository analysis key."""
     return await groq_manager.generate(
         service=ServiceType.REPO_ANALYSIS,
@@ -455,7 +455,7 @@ async def repo_generate(prompt: str, **kwargs) -> Dict[str, Any]:
     )
 
 
-async def chatbot_generate(prompt: str, **kwargs) -> Dict[str, Any]:
+async def chatbot_generate(prompt: str = "", **kwargs) -> Dict[str, Any]:
     """Generate using chatbot key."""
     return await groq_manager.generate(
         service=ServiceType.CHATBOT,

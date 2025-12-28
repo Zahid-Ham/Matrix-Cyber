@@ -173,6 +173,17 @@ class ApiClient {
             body: JSON.stringify(data),
         });
     }
+
+    // Chat endpoint
+    async chat(message: string, scanId?: number) {
+        return this.request<{
+            response: string;
+            metadata?: any;
+        }>('/api/chat', {
+            method: 'POST',
+            body: JSON.stringify({ message, scan_id: scanId }),
+        });
+    }
 }
 
 // Types
@@ -214,6 +225,7 @@ export interface Vulnerability {
     severity: 'critical' | 'high' | 'medium' | 'low' | 'info';
     cvss_score?: number;
     url: string;
+    file_path?: string;
     parameter?: string;
     method: string;
     title: string;

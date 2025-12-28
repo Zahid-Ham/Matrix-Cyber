@@ -261,6 +261,7 @@ class AgentResult:
 
     # Location
     url: str
+    file_path: Optional[str] = None
     parameter: Optional[str] = None
     method: str = HTTPMethods.GET
 

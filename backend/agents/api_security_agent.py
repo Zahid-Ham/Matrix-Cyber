@@ -703,7 +703,7 @@ class APISecurityAgent(BaseSecurityAgent):
 
         return results
 
-    def _validate_header_value(
+    async def _validate_header_value(
             self,
             header: str,
             value: str,
@@ -800,17 +800,25 @@ class APISecurityAgent(BaseSecurityAgent):
                 issues.append("default-src allows all sources (*)")
 
             if issues:
+                header_context = f"Security header '{header}' is misconfigured on {url}. Found issues: {', '.join(issues)}"
+                ai_analysis = await self.analyze_with_ai(
+                    vulnerability_type="Security Header Misconfiguration",
+                    context=header_context,
+                    response_data=f"{header}: {value}"
+                )
+
                 return False, self.create_result(
                     vulnerability_type=VulnerabilityType.SECURITY_MISCONFIG,
                     is_vulnerable=True,
                     severity=Severity.LOW,
-                    confidence=90,
+                    confidence=ai_analysis.get("confidence", 90),
                     url=url,
-                    title="Content-Security-Policy Too Permissive",
+                    title=f"Security Header Misconfigured: {header}",
                     description=f"CSP contains permissive directives: {', '.join(issues)}",
-                    evidence=f"Content-Security-Policy: {value[:200]}...",
-                    likelihood=3.0,
-                    impact=3.0,
+                    evidence=f"{header}: {value[:200]}...",
+                    ai_analysis=ai_analysis.get("reason", ""),
+                    likelihood=ai_analysis.get("likelihood", 3.0),
+                    impact=ai_analysis.get("impact", 3.0),
                     remediation="Remove 'unsafe-inline' and 'unsafe-eval'. Use nonces/hashes.",
                     owasp_category="API8:2023 – Security Misconfiguration",
                     cwe_id="CWE-693"
@@ -845,7 +853,7 @@ class APISecurityAgent(BaseSecurityAgent):
 
                 if header_lower in headers_lower:
                     value = headers_lower[header_lower]
-                    is_valid, issue = self._validate_header_value(header, value, url)
+                    is_valid, issue = await self._validate_header_value(header, value, url)
 
                     if is_valid:
                         present_headers.append(header)
@@ -866,17 +874,25 @@ class APISecurityAgent(BaseSecurityAgent):
                     elif header == "Content-Security-Policy":
                         impact = 3.0
 
+                    header_context = f"Security header '{header}' is missing from {url}. This reduces defense-in-depth."
+                    ai_analysis = await self.analyze_with_ai(
+                        vulnerability_type="Missing Security Header",
+                        context=header_context,
+                        response_data="Header not found in response"
+                    )
+
                     results.append(self.create_result(
                         vulnerability_type=VulnerabilityType.SECURITY_MISCONFIG,
                         is_vulnerable=True,
                         severity=severity,
-                        confidence=95,
+                        confidence=ai_analysis.get("confidence", 95),
                         url=url,
                         title=f"Missing Security Header: {header}",
                         description=f"Security header '{header}' not present. Defense-in-depth control missing.",
                         evidence=f"Header '{header}' not found",
-                        likelihood=likelihood,
-                        impact=impact,
+                        ai_analysis=ai_analysis.get("reason", ""),
+                        likelihood=ai_analysis.get("likelihood", likelihood),
+                        impact=ai_analysis.get("impact", impact),
                         exploitability_rationale=(
                             "Increases attack surface but not directly exploitable alone. "
                             "Risk amplified when chained with other vulnerabilities."

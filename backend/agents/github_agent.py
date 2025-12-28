@@ -256,6 +256,9 @@ class GithubSecurityAgent(BaseSecurityAgent):
         self.file_cache: Dict[str, CacheEntry] = {}
         self.vulnerability_db_cache: Dict[str, List[Dict]] = {}
 
+        # Concurrency Control for AI
+        self._ai_semaphore = asyncio.Semaphore(1)
+
         # Statistics
         self.stats = {
             'files_scanned': 0,
@@ -263,6 +266,7 @@ class GithubSecurityAgent(BaseSecurityAgent):
             'cache_hits': 0,
             'cache_misses': 0,
             'api_calls': 0,
+            'ai_calls': 0
         }
 
     # ==================== Main Scan Entry Point ====================
@@ -276,16 +280,8 @@ class GithubSecurityAgent(BaseSecurityAgent):
     ) -> List[AgentResult]:
         """
         Scan a GitHub repository with enhanced capabilities.
-
-        Args:
-            target_url: GitHub repository URL
-            endpoints: Not used for GitHub scanning
-            technology_stack: Not used for GitHub scanning
-            scan_context: Shared context between agents
-
-        Returns:
-            List of vulnerability findings
         """
+        import json
         results = []
         repo_info = self._parse_github_url(target_url)
 
@@ -294,36 +290,47 @@ class GithubSecurityAgent(BaseSecurityAgent):
             return []
 
         owner, repo = repo_info
-        logger.info(f"Starting enhanced scan of repository: {owner}/{repo}")
+        logger.info(f"Starting optimized scan of repository: {owner}/{repo}")
 
         try:
-            # 1. Get default branch dynamically
+            # 1. Get default branch
             default_branch = await self._get_default_branch(owner, repo)
-            logger.info(f"Using branch: {default_branch}")
-
-            # 2. Fetch and prioritize files
+            
+            # 2. Reconnaissance
             files = await self._fetch_repo_files(owner, repo, default_branch)
             if not files:
-                logger.warning(f"No files found in repository {owner}/{repo}")
                 return []
 
-            logger.info(f"Found {len(files)} total files in repository")
+            # 3. AI Hotspot Detection
+            logger.info("Step 1/4: Identifying high-risk hotspots via AI...")
+            hotspots = await self._get_hotspots_via_ai(files, owner, repo, default_branch)
+            logger.info(f"AI identified {len(hotspots)} potential hotspots")
 
-            # 3. Prioritize and filter files
-            prioritized_files = self._prioritize_files(files)
-            target_files = prioritized_files[:GithubAgentConfig.MAX_FILES_TO_SCAN]
+            # 4. Static Scan + Content Fetching
+            limit = GithubAgentConfig.MAX_FILES_TO_SCAN
+            logger.info(f"Step 2/4: Running static security scan on {min(limit, len(files))} files...")
+            all_scannable = self._prioritize_files(files)
+            files_to_scan = all_scannable[:limit]
+            
+            static_results, hotspot_data = await self._scan_files_batch(
+                owner, repo, default_branch, files_to_scan, set(hotspots)
+            )
+            results.extend(static_results)
 
-            logger.info(f"Selected {len(target_files)} high-priority files for scanning")
+            # 5. Batch AI Analysis for Hotspots
+            if hotspot_data and groq_manager.is_configured:
+                logger.info(f"Step 3/4: Performing deep AI analysis on {len(hotspot_data)} hotspots (batched)...")
+                ai_results = await self._ai_analysis_batch(hotspot_data, owner, repo, default_branch)
+                results.extend(ai_results)
+            else:
+                logger.info("Step 3/4: Skipping deep AI analysis (no hotspots or Groq not configured)")
 
-            # 4. Scan files with concurrency control
-            results.extend(await self._scan_files_batch(owner, repo, default_branch, target_files))
-
-            # 5. Dependency scanning
+            # 6. Dependency scanning
             if GithubAgentConfig.ENABLE_DEPENDENCY_SCAN:
+                logger.info("Step 4/4: Scanning dependencies for vulnerabilities...")
                 dep_results = await self._scan_dependencies(owner, repo, default_branch, files)
                 results.extend(dep_results)
 
-            # 6. Log statistics
             self._log_scan_statistics(owner, repo)
 
         except Exception as e:
@@ -475,6 +482,265 @@ class GithubSecurityAgent(BaseSecurityAgent):
         except (ValueError, TypeError) as e:
             logger.debug(f"Could not parse rate limit headers: {e}")
 
+    # ==================== AI Analysis & Batching ====================
+
+    async def _ai_analysis_batch(
+            self,
+            hotspot_data: List[Dict[str, str]],
+            owner: str,
+            repo: str,
+            branch: str
+    ) -> List[AgentResult]:
+        """
+        Analyze multiple hotspots in batches to save Groq RPM.
+        """
+        all_results = []
+        
+        # Batching parameters (Optimized for Free Tier)
+        MAX_FILES_PER_BATCH = 2
+        MAX_CHARS_PER_BATCH = 30000 
+        MAX_FILE_CHARS = 3000
+        
+        current_batch = []
+        current_chars = 0
+        
+        batches = []
+        for item in hotspot_data:
+            # Truncate file content to stay within token limits
+            truncated_content = item['content'][:MAX_FILE_CHARS]
+            content_len = len(truncated_content)
+            
+            if (len(current_batch) >= MAX_FILES_PER_BATCH or 
+                current_chars + content_len > MAX_CHARS_PER_BATCH) and current_batch:
+                batches.append(current_batch)
+                current_batch = []
+                current_chars = 0
+                
+            current_batch.append({
+                'path': item['path'],
+                'content': truncated_content
+            })
+            current_chars += content_len
+            
+        if current_batch:
+            batches.append(current_batch)
+            
+        logger.info(f"Processing {len(batches)} AI batches for {len(hotspot_data)} files")
+        
+        for idx, batch in enumerate(batches):
+            try:
+                logger.info(f"Analyzing AI batch {idx+1}/{len(batches)} ({len(batch)} files)")
+                batch_results = await self._analyze_batch_single_call(batch, owner, repo, branch)
+                all_results.extend(batch_results)
+            except Exception as e:
+                logger.error(f"Error in AI batch {idx+1}: {e}")
+                
+        return all_results
+
+    async def _analyze_batch_single_call(
+            self,
+            batch: List[Dict[str, str]],
+            owner: str,
+            repo: str,
+            branch: str
+    ) -> List[AgentResult]:
+        """Make a single AI call for a batch of files"""
+        import json
+        results = []
+        
+        # Construct combined prompt
+        files_summary = "\n".join([f"- {f['path']} ({len(f['content'])} chars)" for f in batch])
+        
+        files_content = ""
+        for f in batch:
+            files_content += f"\n--- FILE: {f['path']} ---\n{f['content']}\n"
+            
+        prompt = f"""
+Analyze the following files for high-impact security vulnerabilities (XSS, SQLi, RCE, Path Traversal, Secrets).
+Ignore style/linting issues.
+
+Files in this batch:
+{files_summary}
+
+Source Code:
+{files_content}
+
+Return a JSON object with this structure:
+{{
+  "vulnerabilities": [
+    {{
+      "file": "path/to/file",
+      "type": "Vulnerability Type",
+      "severity": "CRITICAL|HIGH|MEDIUM|LOW",
+      "line": 123,
+      "title": "Short Title",
+      "description": "Details",
+      "fix": "How to fix",
+      "confidence": 85
+    }}
+  ]
+}}
+"""
+        
+        system_prompt = "You are a senior security researcher. Provide deep logic review. Output ONLY valid JSON."
+        
+        async with self._ai_semaphore:
+            self.stats['ai_calls'] += 1
+            response = await repo_generate(
+                prompt=prompt,
+                system_prompt=system_prompt,
+                tier=ModelTier.LARGE_CONTEXT, # Use large context for batches
+                json_mode=True,
+                max_tokens=512,
+                temperature=0.1
+            )
+        
+        try:
+            content_str = response.get('content', '{}')
+            # Extract JSON if it's wrapped in markers
+            if "```json" in content_str:
+                content_str = content_str.split("```json")[1].split("```")[0].strip()
+            elif "```" in content_str:
+                content_str = content_str.split("```")[1].split("```")[0].strip()
+                
+            data = json.loads(content_str)
+            vulns = data.get('vulnerabilities', [])
+            
+            for v in vulns:
+                file_path = v.get('file', batch[0]['path']) # Fallback to first file in batch
+                results.append(self.create_result(
+                    vulnerability_type=self._map_vuln_type(v.get('type')),
+                    is_vulnerable=True,
+                    severity=self._map_severity(v.get('severity')),
+                    confidence=int(v.get('confidence', 70)),
+                    url=f"https://github.com/{owner}/{repo}/blob/{branch}/{file_path}#L{v.get('line', 1)}",
+                    file_path=file_path,
+                    title=v.get('title', 'Security Finding'),
+                    description=v.get('description', ''),
+                    evidence=v.get('evidence', f"Found in {file_path}"),
+                    remediation=v.get('fix', ''),
+                    ai_analysis=json.dumps(v)
+                ))
+        except Exception as e:
+            logger.error(f"Failed to parse AI batch response: {e}")
+            
+        return results
+
+    async def _ai_analysis(
+            self,
+            content: str,
+            file_path: str,
+            owner: str,
+            repo: str,
+            branch: str
+    ) -> List[AgentResult]:
+        """Legacy helper for single file analysis (rarely used now)"""
+        return await self._analyze_batch_single_call([{"path": file_path, "content": content}], owner, repo, branch)
+
+    async def _get_hotspots_via_ai(
+            self,
+            files: List[Dict[str, Any]],
+            owner: str,
+            repo: str,
+            branch: str
+    ) -> List[str]:
+        """
+        Ask AI to identify high-risk files based on file names and structure.
+        Returns a list of file paths to prioritize for deep analysis.
+        """
+        import json
+        
+        # Filter for files that are actually interesting for AI logic audit
+        file_paths = [f['path'] for f in files if self._is_interesting_for_ai(f['path'])]
+        
+        # If no interesting files found, fallback to scannable files
+        if not file_paths:
+            file_paths = [f['path'] for f in files if self._is_scannable_file(f['path'])]
+
+        # If repo is small, we can just treat everything as a hotspot (up to a limit)
+        if len(file_paths) < 15:
+            return file_paths[:15]
+            
+        # Get README content if available for context
+        readme_content = ""
+        for f in files:
+            if f['path'].lower().endswith('readme.md'):
+                try:
+                    url = f"https://raw.githubusercontent.com/{owner}/{repo}/{branch}/{f['path']}"
+                    async with httpx.AsyncClient() as client:
+                        resp = await client.get(url, timeout=5)
+                        if resp.status_code == 200:
+                            readme_content = resp.text[:2000] # First 2k chars
+                except Exception:
+                    pass
+                break
+
+        # Construct Prompt
+        # We need to be careful with token limits if there are HUGE number of files.
+        # We'll take top 1000 files by depth/importance heuristics if needed, but for now just pass list.
+        truncated_list = file_paths[:600] # Safe limit for prompt
+        
+        prompt = f"""
+You are a senior security engineer performing a code audit.
+I will provide a list of files from a repository.
+Your task is to identify the top 10-15 files that are MOST CRITICAL for a security review.
+
+Focus On:
+1. Authentication & Authorization (e.g. auth.py, login.ts, controllers)
+2. Sensitive Data Handling (e.g. payments.js, secrets.py)
+3. API Routes / Endpoints (e.g. routes.py, app.js)
+4. Database Models / Queries (e.g. models.py, db.go)
+5. Dangerous Logic (e.g. upload.php, exec.js)
+
+Repo Context (README snippet):
+{readme_content}
+
+File List:
+{json.dumps(truncated_list)}
+
+Return ONLY a valid JSON object with a single key "hotspots" containing the list of file paths.
+Example: {{"hotspots": ["src/auth.ts", "backend/main.py"]}}
+"""
+        
+        try:
+            async with self._ai_semaphore:
+                self.stats['ai_calls'] += 1
+                response = await repo_generate(
+                    prompt=prompt,
+                    system_prompt="You are a security expert. JSON output only.",
+                    json_mode=True,
+                    tier=ModelTier.FAST, # Fast model is sufficient for selection
+                    max_tokens=384,
+                    temperature=0.1
+                )
+            
+            content = response.get('content', '{}')
+            data = json.loads(content)
+            
+            hotspots = []
+            if isinstance(data, dict):
+                hotspots = data.get('hotspots', [])
+            elif isinstance(data, list):
+                hotspots = data
+                
+            # Clean up and validate
+            valid_hotspots = [h for h in hotspots if isinstance(h, str) and h in file_paths]
+            
+            # Check if we got nothing meaningful
+            if not valid_hotspots:
+                logger.warning("AI returned no valid hotspots, falling back to heuristics")
+                # Fallback to top priority files from heuristics
+                header_files = self._prioritize_files(files)
+                return [f.path for f in header_files[:10]]
+                
+            return valid_hotspots
+            
+        except Exception as e:
+            logger.error(f"Hotspot detection failed: {e}")
+            # Fallback
+            header_files = self._prioritize_files(files)
+            return [f.path for f in header_files[:10]]
+
     # ==================== File Prioritization ====================
 
     def _prioritize_files(self, files: List[Dict[str, Any]]) -> List[FileMetadata]:
@@ -561,6 +827,8 @@ class GithubSecurityAgent(BaseSecurityAgent):
 
         return score
 
+        return True
+
     def _is_scannable_file(self, path: str) -> bool:
         """Check if file should be scanned"""
         # Check ignored directories
@@ -574,6 +842,43 @@ class GithubSecurityAgent(BaseSecurityAgent):
 
         return True
 
+    def _is_interesting_for_ai(self, path: str) -> bool:
+        """
+        Check if file is worth deep AI logic analysis.
+        Skips documentation, low-risk configs, and assets to save tokens/RPM.
+        """
+        path_lower = path.lower()
+        
+        # Skip ignored dirs first
+        if any(ignored_dir in path_lower for ignored_dir in self.IGNORE_DIRS):
+            return False
+
+        # Extensions that typically contain interesting logic
+        ai_extensions = {
+            '.py', '.js', '.ts', '.tsx', '.jsx', '.go', '.java', 
+            '.php', '.rb', '.cs', '.yaml', '.yml', '.toml', '.rs', '.cpp', '.c'
+        }
+        
+        # Skip documentation and plain text
+        if any(path_lower.endswith(ext) for ext in ['.md', '.txt', '.json', '.lock', '.csv', '.sql']):
+             # Keep .json/.toml/.sql ONLY if they look like config or auth
+             if any(kw in path_lower for kw in ['auth', 'config', 'security', 'api', 'credential', 'secret']):
+                 return True
+             return False
+                 
+        # Prioritize high-value patterns
+        high_value_keywords = [
+            'auth', 'login', 'api', 'config', 'db', 'sql', 'serialize', 
+            'session', 'token', 'crypto', 'user', 'permission', 'admin',
+            'route', 'controller', 'handler', 'middleware', 'jwt'
+        ]
+        if any(kw in path_lower for kw in high_value_keywords):
+            return True
+            
+        # Fallback to extension check
+        ext = '.' + path_lower.split('.')[-1] if '.' in path_lower else ''
+        return ext in ai_extensions
+
     def _get_file_type(self, path: str) -> str:
         """Determine file type from path"""
         ext = path.split('.')[-1].lower() if '.' in path else 'unknown'
@@ -586,22 +891,22 @@ class GithubSecurityAgent(BaseSecurityAgent):
             owner: str,
             repo: str,
             branch: str,
-            files: List[FileMetadata]
-    ) -> List[AgentResult]:
+            files: List[FileMetadata],
+            hotspots: Set[str] = None
+    ) -> Tuple[List[AgentResult], List[Dict[str, str]]]:
         """
-        Scan files in controlled batches with concurrency limits.
-
-        Returns:
-            Combined results from all file scans
+        Scan files in controlled batches. Returns (results, hotspot_data_list).
         """
         results = []
+        hotspot_data = []
+        hotspots = hotspots or set()
 
         # Process files in batches to control concurrency
         for i in range(0, len(files), GithubAgentConfig.CONCURRENT_FILE_LIMIT):
             batch = files[i:i + GithubAgentConfig.CONCURRENT_FILE_LIMIT]
 
             tasks = [
-                self._analyze_file(owner, repo, branch, file_meta)
+                self._analyze_file(owner, repo, branch, file_meta, is_hotspot=(file_meta.path in hotspots))
                 for file_meta in batch
             ]
 
@@ -610,78 +915,69 @@ class GithubSecurityAgent(BaseSecurityAgent):
             for result in batch_results:
                 if isinstance(result, Exception):
                     logger.error(f"File analysis error: {result}")
-                elif result:
-                    results.extend(result)
+                elif isinstance(result, tuple):
+                    res, hs_info = result
+                    results.extend(res)
+                    if hs_info:
+                        hotspot_data.append(hs_info)
 
             # Small delay between batches to be nice to GitHub
             if i + GithubAgentConfig.CONCURRENT_FILE_LIMIT < len(files):
                 await asyncio.sleep(0.5)
 
-        return results
+        return results, hotspot_data
 
     async def _analyze_file(
             self,
             owner: str,
             repo: str,
             branch: str,
-            file_meta: FileMetadata
-    ) -> List[AgentResult]:
+            file_meta: FileMetadata,
+            is_hotspot: bool = False
+    ) -> Tuple[List[AgentResult], Optional[Dict[str, str]]]:
         """
-        Download and analyze a single file.
-
-        Returns:
-            List of vulnerabilities found in the file
+        Download and analyze a single file. Returns static results and hotspot content if applicable.
         """
         results = []
         file_path = file_meta.path
 
-        # Check file size limit
         if file_meta.size > GithubAgentConfig.MAX_FILE_SIZE_BYTES:
-            logger.warning(f"Skipping large file ({file_meta.size} bytes): {file_path}")
-            return []
+            return [], None
 
-        # Check cache first
         content = self._get_cached_content(file_path, file_meta.sha)
 
         if content is None:
-            # Download file
             raw_url = f"https://raw.githubusercontent.com/{owner}/{repo}/{branch}/{file_path}"
-
             try:
                 async with httpx.AsyncClient() as client:
                     response = await client.get(raw_url, timeout=GithubAgentConfig.DEFAULT_TIMEOUT)
-
                     if response.status_code != 200:
-                        logger.debug(f"Could not fetch {file_path}: {response.status_code}")
-                        return []
-
+                        return [], None
                     content = response.text
                     self._cache_content(file_path, content, file_meta.sha)
                     self.stats['cache_misses'] += 1
-
             except Exception as e:
                 logger.error(f"Error downloading {file_path}: {e}")
-                return []
+                return [], None
         else:
             self.stats['cache_hits'] += 1
 
-        # Analyze content
+        # 1. Static Secret scanning (Always run)
         try:
-            # 1. Secret scanning with entropy analysis
             secret_results = self._scan_for_secrets(content, owner, repo, branch, file_path)
             results.extend(secret_results)
-
-            # 2. AI-powered SAST (if configured)
-            if groq_manager.is_configured:
-                ai_results = await self._ai_analysis(content, file_path, owner, repo, branch)
-                results.extend(ai_results)
-
             self.stats['files_scanned'] += 1
-
         except Exception as e:
-            logger.error(f"Error analyzing {file_path}: {e}")
+            logger.error(f"Error in static analysis for {file_path}: {e}")
 
-        return results
+        # 2. Return content for hotspot analysis (if flagged)
+        hotspot_info = None
+        if is_hotspot:
+            # Skip lockfiles and very large files for AI
+            if not any(file_path.endswith(ext) for ext in ['.lock', '-lock.json', '.lockb', '.yaml', '.yml']):
+                hotspot_info = {"path": file_path, "content": content[:50000]} # Limit individual file size for AI
+
+        return results, hotspot_info
 
     # ==================== Secret Detection ====================
 

@@ -143,6 +143,7 @@ async def _execute_scan_async(scan_id: int) -> dict:
                     title=res.title,
                     description=res.description,
                     url=res.url,
+                    file_path=res.file_path,
                     method=res.method,
                     parameter=res.parameter,
                     evidence=res.evidence,

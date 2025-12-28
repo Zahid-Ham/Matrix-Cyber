@@ -22,6 +22,8 @@ import { Navbar } from '../../components/Navbar';
 import { useAuth } from '../../context/AuthContext';
 import { api, Scan, Vulnerability } from '../../lib/api';
 import { useRouter } from 'next/navigation';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
 const MOCK_FILES = [
     'backend/main.py',
@@ -51,6 +53,9 @@ export default function RepoAnalysisPage() {
     const [input, setInput] = useState('');
     const [progress, setProgress] = useState(0);
     const [stats, setStats] = useState({ high: 0, secrets: 0, files: 0 });
+    const [vulnerableFiles, setVulnerableFiles] = useState<{ file: string, issues: number, severity: string }[]>([]);
+    const [scanId, setScanId] = useState<number | null>(null);
+    const [isThinking, setIsThinking] = useState(false);
     const chatEndRef = useRef<HTMLDivElement>(null);
     const logsEndRef = useRef<HTMLDivElement>(null);
 
@@ -69,8 +74,6 @@ export default function RepoAnalysisPage() {
     useEffect(() => {
         scrollLogsToBottom();
     }, [auditLogs]);
-
-    const [scanId, setScanId] = useState<number | null>(null);
 
     const handleAnalyze = async () => {
         if (!repoUrl) return;
@@ -124,10 +127,32 @@ export default function RepoAnalysisPage() {
 
                         // Update Stats State
                         setStats({
-                            files: 0, // Backend doesn't return file count in vuln summary, use placeholder or fetch from scan logs if available
+                            files: findings.length > 0 ? Array.from(new Set(findings.map(f => f.file_path))).length : 0,
                             high: high + critical,
                             secrets: secrets
                         });
+
+                        // Calculate Top Vulnerable Files
+                        const fileCountMap: Record<string, { issues: number, severity: string }> = {};
+                        findings.forEach(f => {
+                            const path = f.file_path || 'unknown';
+                            if (!fileCountMap[path]) {
+                                fileCountMap[path] = { issues: 0, severity: f.severity };
+                            }
+                            fileCountMap[path].issues += 1;
+                            // Keep the highest severity
+                            const severityOrder = { 'critical': 3, 'high': 2, 'medium': 1, 'low': 0, 'info': 0 };
+                            if (severityOrder[f.severity as keyof typeof severityOrder] > severityOrder[fileCountMap[path].severity as keyof typeof severityOrder]) {
+                                fileCountMap[path].severity = f.severity;
+                            }
+                        });
+
+                        const sortedFiles = Object.entries(fileCountMap)
+                            .map(([file, data]) => ({ file, ...data }))
+                            .sort((a, b) => b.issues - a.issues)
+                            .slice(0, 3);
+
+                        setVulnerableFiles(sortedFiles);
 
                         // Construct summary message
                         const summary = `Audit complete! I found ${findings.length} issues in total.\n` +
@@ -168,21 +193,29 @@ export default function RepoAnalysisPage() {
         }
     };
 
-    const handleSendMessage = () => {
+    const handleSendMessage = async () => {
         if (!input.trim()) return;
 
-        const newMessages = [...messages, { role: 'user', content: input }];
+        const userMessage = input.trim();
+        const newMessages = [...messages, { role: 'user', content: userMessage }];
         setMessages(newMessages);
         setInput('');
+        setIsThinking(true);
 
-        // Placeholder for Chatbot Integration
-        // Ideally we would call an endpoint like POST /api/chat { message, context: { scan_id: scanId } }
-        setTimeout(() => {
+        try {
+            const chatResponse = await api.chat(userMessage, scanId || undefined);
             setMessages(prev => [...prev, {
                 role: 'assistant',
-                content: `I'm sorry, I cannot answer questions about the code yet (Chat API integration pending). Please view the full report in the Dashboard.`
+                content: chatResponse.response
             }]);
-        }, 1000);
+        } catch (error: any) {
+            setMessages(prev => [...prev, {
+                role: 'assistant',
+                content: `I encountered an error while processing your request: ${error.message}`
+            }]);
+        } finally {
+            setIsThinking(false);
+        }
     };
 
     const handleKeyPress = (e: React.KeyboardEvent) => {
@@ -273,14 +306,14 @@ export default function RepoAnalysisPage() {
                                     <div className="glass-card p-6 border-l-4 border-l-red-500">
                                         <div className="flex items-center gap-2 mb-2 text-red-500">
                                             <AlertTriangle className="w-5 h-5" />
-                                            <span className="text-2xl font-serif font-bold">03</span>
+                                            <span className="text-2xl font-serif font-bold">{stats.high.toString().padStart(2, '0')}</span>
                                         </div>
                                         <div className="text-xs uppercase font-bold tracking-widest text-text-muted">High Severity</div>
                                     </div>
                                     <div className="glass-card p-6 border-l-4 border-l-accent-gold">
                                         <div className="flex items-center gap-2 mb-2 text-accent-gold">
                                             <Lock className="w-5 h-5" />
-                                            <span className="text-2xl font-serif font-bold">05</span>
+                                            <span className="text-2xl font-serif font-bold">{stats.secrets.toString().padStart(2, '0')}</span>
                                         </div>
                                         <div className="text-xs uppercase font-bold tracking-widest text-text-muted">Secrets Exposed</div>
                                     </div>
@@ -292,24 +325,29 @@ export default function RepoAnalysisPage() {
                                         <BarChart3 className="w-4 h-4 text-text-muted" />
                                     </div>
                                     <div className="space-y-3">
-                                        {[
-                                            { file: 'backend/main.py', issues: 2, severity: 'high' },
-                                            { file: 'backend/api/auth.py', issues: 3, severity: 'critical' },
-                                            { file: '.env', issues: 1, severity: 'critical' },
-                                        ].map((item, i) => (
-                                            <div key={i} className="flex items-center justify-between p-3 bg-warm-50 rounded-lg border border-warm-200">
-                                                <div className="flex items-center gap-3">
-                                                    <FileCode className="w-4 h-4 text-accent-primary" />
-                                                    <span className="text-xs font-mono text-text-primary">{item.file}</span>
+                                        {vulnerableFiles.length > 0 ? (
+                                            vulnerableFiles.map((item, i) => (
+                                                <div key={i} className="flex items-center justify-between p-3 bg-warm-50 rounded-lg border border-warm-200">
+                                                    <div className="flex items-center gap-3">
+                                                        <FileCode className="w-4 h-4 text-accent-primary" />
+                                                        <span className="text-xs font-mono text-text-primary truncate max-w-[200px]">{item.file}</span>
+                                                    </div>
+                                                    <span className={`text-[10px] font-bold uppercase tracking-tighter px-2 py-0.5 rounded ${item.severity === 'critical' || item.severity === 'high' ? 'bg-red-100 text-red-600' : 'bg-orange-100 text-orange-600'
+                                                        }`}>
+                                                        {item.issues} Issues
+                                                    </span>
                                                 </div>
-                                                <span className={`text-[10px] font-bold uppercase tracking-tighter px-2 py-0.5 rounded ${item.severity === 'critical' ? 'bg-red-100 text-red-600' : 'bg-orange-100 text-orange-600'
-                                                    }`}>
-                                                    {item.issues} Issues
-                                                </span>
+                                            ))
+                                        ) : (
+                                            <div className="text-center py-8 text-text-muted text-xs italic">
+                                                No specific file vulnerabilities detected.
                                             </div>
-                                        ))}
+                                        )}
                                     </div>
-                                    <button className="w-full mt-4 btn-secondary py-3 text-xs uppercase tracking-widest font-bold">
+                                    <button
+                                        onClick={() => router.push(`/scans/${scanId}`)}
+                                        className="w-full mt-4 btn-secondary py-3 text-xs uppercase tracking-widest font-bold"
+                                    >
                                         View Full Source Report
                                     </button>
                                 </div>
@@ -392,10 +430,33 @@ export default function RepoAnalysisPage() {
                                                     {msg.role === 'assistant' ? 'Matrix AI' : 'Security Lead'}
                                                 </span>
                                             </div>
-                                            <p className="text-sm leading-relaxed">{msg.content}</p>
+                                            {msg.role === 'assistant' ? (
+                                                <div className="prose prose-sm max-w-none prose-pre:bg-gray-900 prose-pre:text-gray-100 prose-code:text-accent-primary prose-headings:text-black prose-p:text-black prose-li:text-black prose-strong:text-black">
+                                                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                                                        {msg.content}
+                                                    </ReactMarkdown>
+                                                </div>
+                                            ) : (
+                                                <p className="text-sm leading-relaxed">{msg.content}</p>
+                                            )}
                                         </div>
                                     </div>
                                 ))}
+                                {isThinking && (
+                                    <div className="flex justify-start">
+                                        <div className="bg-white border border-warm-200 text-text-primary mr-12 rounded-2xl rounded-tl-none shadow-sm p-4">
+                                            <div className="flex items-center gap-2 mb-1">
+                                                <Cpu className="w-3 h-3 opacity-70 animate-pulse" />
+                                                <span className="text-[10px] uppercase font-bold tracking-widest opacity-60">Matrix AI</span>
+                                            </div>
+                                            <div className="flex gap-1 mt-1">
+                                                <span className="w-1.5 h-1.5 rounded-full bg-accent-primary/40 animate-bounce [animation-delay:-0.3s]" />
+                                                <span className="w-1.5 h-1.5 rounded-full bg-accent-primary/40 animate-bounce [animation-delay:-0.15s]" />
+                                                <span className="w-1.5 h-1.5 rounded-full bg-accent-primary/40 animate-bounce" />
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
                                 <div ref={chatEndRef} />
                             </div>
 

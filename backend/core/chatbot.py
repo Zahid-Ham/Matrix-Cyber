@@ -9,9 +9,11 @@ from typing import List, Dict, Any, Optional
 from datetime import datetime, timezone
 from core.groq_client import chatbot_generate, groq_manager
 from core.logger import get_logger
+from config import get_settings
 
 # Initialize structured logger
 logger = get_logger(__name__)
+settings = get_settings()
 
 
 class SASTChatbot:
@@ -24,22 +26,21 @@ class SASTChatbot:
     """
     
     # Default configuration
-    DEFAULT_MODEL = "Qwen/Qwen2.5-7B-Instruct"
     DEFAULT_TEMPERATURE = 0.3
     DEFAULT_MAX_TOKENS = 2048
     REQUEST_TIMEOUT = 60.0
     MAX_CONVERSATION_HISTORY = 10
     
-    def __init__(self, model: str = DEFAULT_MODEL) -> None:
+    def __init__(self, model: Optional[str] = None) -> None:
         """
-        Initialize chatbot with Hugging Face II configuration.
+        Initialize chatbot with Groq configuration.
         
         Args:
             model: The AI model identifier to use for chat completions.
-                  Defaults to Trendyol/Trendyol-Cybersecurity-LLM-v2-70B-Q4_K_ via Hugging Face.
+                  Defaults to settings.groq_model_chatbot.
         """
         self.client = groq_manager
-        self.model = model
+        self.model = model or settings.groq_model_chatbot
         self.conversation_history: List[Dict[str, str]] = []
         self.scan_context: str = ""
         self.system_prompt: str = ""

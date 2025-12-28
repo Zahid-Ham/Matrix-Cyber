@@ -11,7 +11,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 from config import get_settings
 from core.database import init_db, close_db
-from api import auth_router, scans_router, vulnerabilities_router, test_bench
+from api import auth_router, scans_router, vulnerabilities_router, chatbot_router, test_bench
 from agents.orchestrator import orchestrator
 from agents.xss_agent import XSSAgent
 from agents.sql_injection_agent import SQLInjectionAgent
@@ -207,6 +207,7 @@ async def root():
 app.include_router(auth_router, prefix="/api")
 app.include_router(scans_router, prefix="/api")
 app.include_router(vulnerabilities_router, prefix="/api")
+app.include_router(chatbot_router, prefix="/api")
 app.include_router(test_bench.router, prefix="/api")
 
 
