@@ -175,7 +175,7 @@ class ScanService:
         Returns:
             Vulnerability database object
         """
-        return Vulnerability(
+        vuln = Vulnerability(
             scan_id=scan_id,
             vulnerability_type=result.vulnerability_type,
             severity=result.severity,
@@ -198,6 +198,11 @@ class ScanService:
             detected_by=result.agent_name,
             detected_at=result.detected_at,
         )
+        
+        # Calculate proper CVSS v3.1 score
+        vuln.set_cvss_from_severity()
+        
+        return vuln
 
 
 # Background task function for running scans
