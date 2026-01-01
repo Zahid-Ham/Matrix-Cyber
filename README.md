@@ -1,4 +1,4 @@
-# Matrix - AI-Powered Autonomous Security Scanner
+# Matrix - Intelligent Agent-Driven Security Scanner
 
 <div align="center">
 
@@ -16,11 +16,11 @@
 
 ## 🚀 Overview
 
-**Matrix** is an AI-powered autonomous security testing platform built with a mission to democratize penetration testing. Designed to rival enterprise-grade solutions, Matrix leverages **Groq AI** (Llama 3.3 70B) and intelligent agent orchestration to simulate real-world attacker behavior and discover vulnerabilities before they're exploited.
+**Matrix** is an autonomous security testing platform built with a mission to democratize penetration testing. Powered by a **multi-agent architecture**, Matrix orchestrates 8 specialized security agents that work in concert to simulate real-world attacker behavior and discover vulnerabilities before they're exploited.
 
 ### Why Matrix?
 
-- **🧠 Intelligent Orchestration**: 8 specialized AI agents work in concert, sharing intelligence through a unified scan context
+- **🧠 Intelligent Orchestration**: 8 specialized security agents work in concert, sharing intelligence through a unified scan context
 - **⚡ Real-Time Visualization**: Watch agents analyze your application with live terminal logs and animated status cards
 - **📈 Professional Reporting**: Export CISO-grade security reports with CVSS v3.1 scoring, CWE mappings, and severity distributions
 - **🎨 Premium UI/UX**: Beautiful glassmorphism design with Matrix rain animations and responsive layouts
