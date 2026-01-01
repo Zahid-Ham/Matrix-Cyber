@@ -71,8 +71,8 @@ Matrix employs a sophisticated **multi-agent orchestration** architecture with f
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────────┐
-│                          🎯 MATRIX ORCHESTRATOR                               │
-│                                                                               │
+│                          🎯 MATRIX ORCHESTRATOR                              │
+│                                                                              │
 │  • Dependency Resolution Engine    • Scan Context (Shared State)             │
 │  • Progress Tracking & Callbacks   • Error Handling & Retry Logic            │
 │  • Result Aggregation & Metrics    • Agent Lifecycle Management              │
@@ -82,7 +82,7 @@ Matrix employs a sophisticated **multi-agent orchestration** architecture with f
                     ▼               ▼               ▼
          ┌──────────────┐  ┌──────────────┐  ┌──────────────┐
          │  PHASE 1:    │  │  PHASE 2:    │  │  PHASE 3:    │
-         │RECONNAISSANCE│─▶│  DISCOVERY   │─▶│EXPLOITATION  │
+         │RECONNAISSANCE│─▶│  DISCOVERY  │─▶│EXPLOITATION  │
          └──────────────┘  └──────────────┘  └──────────────┘
                 │                  │                  │
                 │                  │                  │
@@ -130,7 +130,7 @@ Matrix employs a sophisticated **multi-agent orchestration** architecture with f
                                     └───────────┬───────────────┘
                                                 │
                                     ┌───────────▼───────────────┐
-                                    │   📤 OUTPUT LAYER         │
+                                    │    📤 OUTPUT LAYER        │
                                     │                           │
                                     │  • Vulnerability DB       │
                                     │  • PDF Report Generator   │
