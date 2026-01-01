@@ -574,22 +574,29 @@ class RequestCache:
         )
 
 
-# Global cache instance
-_global_cache: Optional[RequestCache] = None
+# Lazy initialization for multi-loop environments
+class LazyRequestCache:
+    def __init__(self):
+        self._instance: Optional[RequestCache] = None
+        
+    def _get_instance(self) -> RequestCache:
+        if self._instance is None:
+            self._instance = RequestCache()
+        return self._instance
+        
+    def __getattr__(self, name):
+        return getattr(self._get_instance(), name)
+
+    def force_reset(self):
+        """Reset instance to allow re-initialization in new loop."""
+        self._instance = None
+
+_global_cache = LazyRequestCache()
 
 
 def get_request_cache() -> RequestCache:
-    """
-    Get the global request cache instance.
-    
-    Returns:
-        Global RequestCache instance
-    """
-    global _global_cache
-    if _global_cache is None:
-        _global_cache = RequestCache()
-        logger.debug("Created global request cache instance")
-    return _global_cache
+    """Get the global request cache instance."""
+    return _global_cache._get_instance()
 
 
 def configure_cache(config: CacheConfig) -> None:

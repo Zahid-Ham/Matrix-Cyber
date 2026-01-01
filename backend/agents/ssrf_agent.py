@@ -20,6 +20,7 @@ from dataclasses import dataclass
 from models.vulnerability import Severity, VulnerabilityType
 from .base_agent import BaseSecurityAgent, AgentResult
 from .waf_evasion import WAFEvasionMixin
+from scoring import VulnerabilityContext, ConfidenceMethod
 
 
 @dataclass
@@ -36,6 +37,8 @@ class SSRFTestResult:
     response_snippet: str = ""
     evasion_used: bool = False
     evasion_technique: str = ""
+    detection_method: Optional[str] = None
+    audit_log: Optional[List[str]] = None
 
 
 class SSRFAgent(BaseSecurityAgent, WAFEvasionMixin):
@@ -436,7 +439,9 @@ class SSRFAgent(BaseSecurityAgent, WAFEvasionMixin):
                         description=f"Cloud Metadata Access: {test_config['description']}",
                         evidence=f"Response contains: {', '.join(test_config['indicators'][:2])}",
                         severity=test_config["severity"],
-                        confidence=95,
+                        confidence=self.calculate_confidence(ConfidenceMethod.CONFIRMED_EXPLOIT),
+                        detection_method=f"SSRF: {test_config['type']}",
+                        audit_log=[f"Successfully reached {test_config['description']} endpoint via parameter '{param_name}'"],
                         response_time=response_time,
                         response_code=response.status_code,
                         response_snippet=response.text[:500]
@@ -483,7 +488,9 @@ class SSRFAgent(BaseSecurityAgent, WAFEvasionMixin):
                         description=f"Protocol Handler Abuse: {payload.split(':')[0]}://",
                         evidence=f"Successfully accessed {payload_config['type']}",
                         severity=severity,
-                        confidence=90,
+                        confidence=self.calculate_confidence(ConfidenceMethod.CONFIRMED_EXPLOIT),
+                        detection_method="Protocol Handler Abuse",
+                        audit_log=[f"Detected protocol handler abuse ({payload.split(':')[0]}) on parameter '{param_name}'"],
                         response_time=response_time,
                         response_code=response.status_code,
                         response_snippet=response.text[:300]
@@ -527,7 +534,9 @@ class SSRFAgent(BaseSecurityAgent, WAFEvasionMixin):
                             description=f"Internal Service Access: {service['service']}",
                             evidence=f"Detected {service['service']} response",
                             severity=Severity.HIGH,
-                            confidence=85,
+                            confidence=self.calculate_confidence(ConfidenceMethod.SPECIFIC_ERROR),
+                        detection_method="Internal Service Access",
+                        audit_log=[f"Detected access to internal service {payload} on parameter '{param_name}'"],
                             response_time=response_time,
                             response_code=response.status_code,
                             response_snippet=response.text[:300]
@@ -541,7 +550,9 @@ class SSRFAgent(BaseSecurityAgent, WAFEvasionMixin):
                             description=f"Internal Network Access: {service['service']} port",
                             evidence=f"Received {response.status_code} response with content",
                             severity=Severity.MEDIUM,
-                            confidence=70,
+                            confidence=self.calculate_confidence(ConfidenceMethod.SPECIFIC_ERROR),
+                        detection_method="Internal Network Discovery",
+                        audit_log=[f"Detected internal network endpoint {payload} on parameter '{param_name}'"],
                             response_time=response_time,
                             response_code=response.status_code,
                             response_snippet=response.text[:200]
@@ -639,7 +650,9 @@ class SSRFAgent(BaseSecurityAgent, WAFEvasionMixin):
                     description="Blind SSRF (timing-based)",
                     evidence=f"Response time: {slow_time:.2f}s vs baseline {avg_baseline:.2f}s",
                     severity=Severity.MEDIUM,
-                    confidence=60,  # Lower confidence for timing-based
+                    confidence=self.calculate_confidence(ConfidenceMethod.LOGIC_MATCH),
+                    detection_method="Timing-based Blind SSRF",
+                                audit_log=[f"Detected significant response time delay ({slow_time - avg_baseline:.2f}s) when accessing internal target"],
                     response_time=slow_time
                 )
 
@@ -651,7 +664,7 @@ class SSRFAgent(BaseSecurityAgent, WAFEvasionMixin):
                 description="Blind SSRF (timeout-based)",
                 evidence=f"Request timed out accessing internal IP (baseline: {avg_baseline:.2f}s)",
                 severity=Severity.MEDIUM,
-                confidence=65,
+                confidence=self.calculate_confidence(ConfidenceMethod.LOGIC_MATCH, evidence_quality=0.8),
                 response_time=15.0
             )
         except Exception:
@@ -705,6 +718,50 @@ class SSRFAgent(BaseSecurityAgent, WAFEvasionMixin):
             if indicator.lower() in text_lower:
                 return True
         return False
+
+    def _build_ssrf_context(
+            self,
+            test_result: SSRFTestResult,
+            url: str,
+            method: str,
+            param_name: str
+    ) -> VulnerabilityContext:
+        """Build VulnerabilityContext from SSRF test result."""
+        
+        # Determine specific capabilities and impact
+        can_access_cloud = "metadata" in test_result.description.lower() or "aws" in test_result.description.lower()
+        can_access_internal = "internal" in test_result.description.lower() or "localhost" in test_result.description.lower()
+        can_access_files = "file" in test_result.description.lower() or "protocol" in test_result.description.lower()
+        
+        data_exposed = []
+        if can_access_cloud:
+            data_exposed.extend(["cloud_metadata", "credentials", "tokens"])
+        if can_access_files:
+            data_exposed.extend(["system_files", "passwords", "configuration"])
+        if can_access_internal:
+            data_exposed.extend(["internal_network", "service_banners"])
+            
+        return VulnerabilityContext(
+            vulnerability_type="ssrf",
+            detection_method=test_result.detection_method or "ssrf_probe",
+            endpoint=url,
+            parameter=param_name,
+            http_method=method,
+            # SSRF exploits ability to make requests, usually without user interaction
+            requires_user_interaction=False,
+            requires_authentication=False, # Default assumption unless known otherwise
+            network_accessible=True,
+            data_exposed=data_exposed,
+            # SSRF by definition escapes the app boundary to the network/OS
+            escapes_security_boundary=True,
+            can_access_cloud_metadata=can_access_cloud,
+            can_access_internal_network=can_access_internal,
+            payload_succeeded=True,
+            additional_context={
+                "evasion_used": test_result.evasion_used,
+                "evasion_technique": test_result.evasion_technique
+            }
+        )
 
     def _convert_to_agent_result(
             self,
@@ -783,11 +840,15 @@ class SSRFAgent(BaseSecurityAgent, WAFEvasionMixin):
         if test_result.evasion_used:
             evidence += f"\nWAF Evasion: {test_result.evasion_technique}"
 
+        # Build context for CVSS calculation
+        context = self._build_ssrf_context(test_result, url, method, param_name)
+
         return self.create_result(
             vulnerability_type=VulnerabilityType.SSRF,
             is_vulnerable=True,
             severity=test_result.severity,
             confidence=test_result.confidence,
+            vulnerability_context=context,
             url=url,
             parameter=param_name,
             method=method,

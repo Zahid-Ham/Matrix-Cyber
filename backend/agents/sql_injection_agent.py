@@ -11,6 +11,7 @@ from urllib.parse import urljoin, urlparse, parse_qs
 
 from .base_agent import BaseSecurityAgent, AgentResult
 from models.vulnerability import Severity, VulnerabilityType
+from scoring import VulnerabilityContext, ConfidenceMethod
 
 @dataclass
 class TimingBaseline:
@@ -259,7 +260,7 @@ class SQLInjectionAgent(BaseSecurityAgent):
             for param_name in params_to_test:
                 # 1. Error-based (fast, high confidence)
                 vuln = await self._test_error_based(
-                    url, method, params, param_name, payloads
+                    url, method, params, param_name, payloads, detected_db
                 )
                 if vuln:
                     results.append(vuln)
@@ -268,7 +269,7 @@ class SQLInjectionAgent(BaseSecurityAgent):
 
                 # 2. Boolean-based blind (medium speed)
                 vuln = await self._test_boolean_based(
-                    url, method, params, param_name
+                    url, method, params, param_name, detected_db
                 )
                 if vuln:
                     results.append(vuln)
@@ -404,7 +405,9 @@ class SQLInjectionAgent(BaseSecurityAgent):
                             vulnerability_type=VulnerabilityType.SQL_INJECTION,
                             is_vulnerable=True,
                             severity=Severity.CRITICAL,
-                            confidence=95,
+                            confidence=self.calculate_confidence(ConfidenceMethod.SPECIFIC_ERROR),
+                            detection_method="Error-based (JSON login)",
+                            audit_log=["Detected SQL error in response to logical bypass payload in JSON body"],
                             url=login_url,
                             parameter="email/username (JSON body)",
                             method="POST",
@@ -429,7 +432,15 @@ class SQLInjectionAgent(BaseSecurityAgent):
                                 "https://portswigger.net/web-security/sql-injection"
                             ],
                             request_data={"payload": payload},
-                            response_snippet=response.text[:500]
+                            response_snippet=response.text[:500],
+                            vulnerability_context=self._build_sqli_context(
+                                url=login_url,
+                                method="POST",
+                                parameter="email/username (JSON body)",
+                                detection_method="error_based",
+                                db_type=detected_db,
+                                is_auth_bypass=True
+                            )
                         )]
 
                     if is_success and has_token and has_user_data:
@@ -438,7 +449,10 @@ class SQLInjectionAgent(BaseSecurityAgent):
                             vulnerability_type=VulnerabilityType.SQL_INJECTION,
                             is_vulnerable=True,
                             severity=Severity.CRITICAL,
-                            confidence=95,
+                            # We logged in as admin without password -> Confirmed Exploit!
+                            confidence=self.calculate_confidence(ConfidenceMethod.CONFIRMED_EXPLOIT),
+                            detection_method="Error-based (JSON login)",
+                            audit_log=["Detected SQL error in response to logical bypass payload in JSON body"],
                             url=login_url,
                             parameter="email/username (JSON body)",
                             method="POST",
@@ -463,7 +477,178 @@ class SQLInjectionAgent(BaseSecurityAgent):
                                 "https://portswigger.net/web-security/sql-injection/lab-login-bypass"
                             ],
                             request_data={"payload": payload},
-                            response_snippet=response.text[:500]
+                            response_snippet=response.text[:500],
+                            vulnerability_context=self._build_sqli_context(
+                                url=login_url,
+                                method="POST",
+                                parameter="email/username (JSON body)",
+                                detection_method="auth_bypass",
+                                db_type=detected_db,
+                                is_auth_bypass=True
+                            )
+                        )]
+
+                except Exception as e:
+                    self.log(f"Login test error for {login_url}: {str(e)}", level="error")
+
+        return results
+        """
+        Test common login endpoints for SQL injection with JSON payloads.
+
+        This specifically targets authentication bypass vulnerabilities in
+        login forms that accept JSON POST requests.
+
+        Args:
+            target_url: Base target URL
+            scan_context: Shared scan context
+            detected_db: Detected database type
+
+        Returns:
+            List of detected vulnerabilities
+        """
+        results = []
+
+        # Parse base URL
+        parsed = urlparse(target_url)
+        base_url = f"{parsed.scheme}://{parsed.netloc}"
+
+        self.log(f"Testing login endpoints for SQL injection...")
+
+        for login_path in SQLInjectionConfig.LOGIN_ENDPOINTS:
+            login_url = urljoin(base_url, login_path)
+
+            # First check if endpoint exists
+            try:
+                check_response = await self.make_request(login_url, method="POST", json={})
+                if check_response is None:
+                    continue
+                # Skip if 404
+                if check_response.status_code == 404:
+                    continue
+            except Exception:
+                continue
+
+            self.log(f"Testing login endpoint: {login_url}")
+
+            # Test each JSON payload
+            for payload in SQLInjectionConfig.JSON_LOGIN_PAYLOADS:
+                try:
+                    response = await self.make_request(
+                        login_url,
+                        method="POST",
+                        json=payload,
+                        headers={"Content-Type": "application/json"}
+                    )
+
+                    if not response:
+                        continue
+
+                    response_text = response.text.lower()
+                    response_json = {}
+                    try:
+                        response_json = response.json() if response.text else {}
+                    except:
+                        pass
+
+                    # Indicators of successful SQL injection login bypass
+                    # 1. Response contains authentication token
+                    has_token = any(k in str(response_json).lower() for k in ['token', 'access', 'jwt', 'session', 'auth'])
+                    
+                    # 2. Response status is 200 (success) when it should fail
+                    is_success = response.status_code == 200
+                    
+                    # 3. Check for SQL error (indicates injection point)
+                    has_sql_error = any(pattern.search(response.text) for pattern in self.error_patterns)
+                    
+                    # 4. Response contains user data (bypass worked)
+                    has_user_data = any(k in str(response_json).lower() for k in ['email', 'user', 'id', 'admin'])
+
+                    if has_sql_error:
+                        # SQL error found - confirmed injection point
+                        return [self.create_result(
+                            vulnerability_type=VulnerabilityType.SQL_INJECTION,
+                            is_vulnerable=True,
+                            severity=Severity.CRITICAL,
+                            confidence=self.get_confidence_threshold("high"),
+                            detection_method="Error-based (JSON login)",
+                            audit_log=["Detected SQL error in response to logical bypass payload in JSON body"],
+                            url=login_url,
+                            parameter="email/username (JSON body)",
+                            method="POST",
+                            title="SQL Injection in Login Endpoint (Authentication Bypass)",
+                            description=(
+                                f"Critical SQL injection vulnerability in login endpoint. "
+                                f"The application exposes SQL errors when malicious input is provided. "
+                                f"This can allow attackers to bypass authentication entirely."
+                            ),
+                            evidence=f"Payload: {payload}\nSQL Error in response",
+                            remediation=(
+                                "1. Use parameterized queries for ALL database operations\n"
+                                "2. Never concatenate user input into SQL queries\n"
+                                "3. Implement input validation and sanitization\n"
+                                "4. Use an ORM with proper SQL escaping\n"
+                                "5. Apply least privilege to database accounts"
+                            ),
+                            owasp_category="A03:2021 – Injection",
+                            cwe_id="CWE-89",
+                            reference_links=[
+                                "https://owasp.org/Top10/A03_2021-Injection/",
+                                "https://portswigger.net/web-security/sql-injection"
+                            ],
+                            request_data={"payload": payload},
+                            response_snippet=response.text[:500],
+                            vulnerability_context=self._build_sqli_context(
+                                url=login_url,
+                                method="POST",
+                                parameter="email/username (JSON body)",
+                                detection_method="error_based",
+                                db_type=detected_db,
+                                is_auth_bypass=True
+                            )
+                        )]
+
+                    if is_success and has_token and has_user_data:
+                        # Successful authentication bypass!
+                        return [self.create_result(
+                            vulnerability_type=VulnerabilityType.SQL_INJECTION,
+                            is_vulnerable=True,
+                            severity=Severity.CRITICAL,
+                            confidence=self.get_confidence_threshold("high"),
+                            detection_method="Error-based (JSON login)",
+                            audit_log=["Detected SQL error in response to logical bypass payload in JSON body"],
+                            url=login_url,
+                            parameter="email/username (JSON body)",
+                            method="POST",
+                            title="SQL Injection Authentication Bypass",
+                            description=(
+                                f"Critical SQL injection authentication bypass. "
+                                f"The login endpoint accepts SQL injection payloads that bypass authentication. "
+                                f"An attacker can login as any user without knowing their password."
+                            ),
+                            evidence=f"Payload: {payload}\nAuthentication token received without valid credentials!",
+                            remediation=(
+                                "1. Use parameterized queries for ALL database operations\n"
+                                "2. Never concatenate user input into SQL queries\n"
+                                "3. Implement proper password hashing and verification\n"
+                                "4. Use an ORM with proper SQL escaping\n"
+                                "5. Apply least privilege to database accounts"
+                            ),
+                            owasp_category="A03:2021 – Injection",
+                            cwe_id="CWE-89",
+                            reference_links=[
+                                "https://owasp.org/Top10/A03_2021-Injection/",
+                                "https://portswigger.net/web-security/sql-injection/lab-login-bypass"
+                            ],
+                            request_data={"payload": payload},
+                            response_snippet=response.text[:500],
+                            vulnerability_context=self._build_sqli_context(
+                                url=login_url,
+                                method="POST",
+                                parameter="email/username (JSON body)",
+                                detection_method="auth_bypass",
+                                db_type=detected_db,
+                                is_auth_bypass=True
+                            )
                         )]
 
                 except Exception as e:
@@ -477,7 +662,8 @@ class SQLInjectionAgent(BaseSecurityAgent):
             method: str,
             params: Dict[str, Any],
             param_name: str,
-            payloads: List[str]
+            payloads: List[str],
+            db_type: Optional[str] = None
     ) -> Optional[AgentResult]:
         """
         Test for error-based SQL injection.
@@ -509,8 +695,16 @@ class SQLInjectionAgent(BaseSecurityAgent):
                         )
 
                         if ai_analysis.get("is_vulnerable", True):
-                            return self.create_result_from_ai(
-                                ai_analysis=ai_analysis,
+                            # We matched a specific error pattern, so we use SPECIFIC_ERROR (80%)
+                            # instead of letting create_result_from_ai cap it at 60%.
+                            return self.create_result(
+                                is_vulnerable=True,
+                                confidence=self.calculate_confidence(ConfidenceMethod.SPECIFIC_ERROR),
+                                detection_method="Error-based",
+                                ai_analysis=ai_analysis.get("reason", ""),
+                                likelihood=ai_analysis.get("likelihood", 0.9),
+                                impact=ai_analysis.get("impact", 0.9),
+                                exploitability_rationale=ai_analysis.get("exploitability_rationale", ""),
                                 vulnerability_type=VulnerabilityType.SQL_INJECTION,
                                 severity=Severity.CRITICAL,
                                 url=url,
@@ -536,7 +730,14 @@ class SQLInjectionAgent(BaseSecurityAgent):
                                     "https://cheatsheetseries.owasp.org/cheatsheets/SQL_Injection_Prevention_Cheat_Sheet.html"
                                 ],
                                 request_data={"params": test_params, "payload": payload},
-                                response_snippet=response.text[:500]
+                                response_snippet=response.text[:500],
+                                vulnerability_context=self._build_sqli_context(
+                                    url=url,
+                                    method=method,
+                                    parameter=param_name,
+                                    detection_method="error_based",
+                                    db_type=db_type
+                                )
                             )
 
             except Exception as e:
@@ -549,7 +750,8 @@ class SQLInjectionAgent(BaseSecurityAgent):
             url: str,
             method: str,
             params: Dict[str, Any],
-            param_name: str
+            param_name: str,
+            db_type: Optional[str] = None
     ) -> Optional[AgentResult]:
         """
         Test for boolean-based blind SQL injection.
@@ -611,7 +813,9 @@ class SQLInjectionAgent(BaseSecurityAgent):
                                 vulnerability_type=VulnerabilityType.SQL_INJECTION,
                                 is_vulnerable=True,
                                 severity=Severity.CRITICAL,
-                                confidence=90,
+                                confidence=self.calculate_confidence(ConfidenceMethod.LOGIC_MATCH, confirmation_count=1),
+                                detection_method="Boolean-based Blind",
+                                audit_log=[f"Detected stable response difference between boolean true/false payloads on parameter '{param_name}'"],
                                 url=url,
                                 parameter=param_name,
                                 method=method,
@@ -638,7 +842,14 @@ class SQLInjectionAgent(BaseSecurityAgent):
                                 reference_links=[
                                     "https://portswigger.net/web-security/sql-injection/blind",
                                     "https://owasp.org/www-community/attacks/Blind_SQL_Injection"
-                                ]
+                                ],
+                                vulnerability_context=self._build_sqli_context(
+                                    url=url,
+                                    method=method,
+                                    parameter=param_name,
+                                    detection_method="boolean_blind",
+                                    db_type=db_type
+                                )
                             )
 
             except Exception as e:
@@ -697,7 +908,9 @@ class SQLInjectionAgent(BaseSecurityAgent):
                                 vulnerability_type=VulnerabilityType.SQL_INJECTION,
                                 is_vulnerable=True,
                                 severity=Severity.CRITICAL,
-                                confidence=85,
+                                confidence=self.calculate_confidence(ConfidenceMethod.CONFIRMED_EXPLOIT),
+                                detection_method="Time-based Blind",
+                                audit_log=[f"Detected consistent response delay (> {SQLInjectionConfig.MIN_DELAY_CONFIRMATION}s) for time-delay payloads on parameter '{param_name}'"],
                                 url=url,
                                 parameter=param_name,
                                 method=method,
@@ -726,7 +939,14 @@ class SQLInjectionAgent(BaseSecurityAgent):
                                     "https://portswigger.net/web-security/sql-injection/blind",
                                     "https://owasp.org/www-community/attacks/Blind_SQL_Injection"
                                 ],
-                                request_data={"payload": payload, "delay": SQLInjectionConfig.TIME_DELAY_SECONDS}
+                                request_data={"payload": payload, "delay": SQLInjectionConfig.TIME_DELAY_SECONDS},
+                                vulnerability_context=self._build_sqli_context(
+                                    url=url,
+                                    method=method,
+                                    parameter=param_name,
+                                    detection_method="time_blind",
+                                    db_type=db_type
+                                )
                             )
 
             except Exception as e:
@@ -786,6 +1006,56 @@ class SQLInjectionAgent(BaseSecurityAgent):
         except Exception as e:
             self.log(f"Request failed: {str(e)}", level="error")
             return None
+
+    def _build_sqli_context(
+            self,
+            url: str,
+            method: str,
+            parameter: str,
+            detection_method: str,
+            db_type: Optional[str] = None,
+            is_auth_bypass: bool = False
+    ) -> VulnerabilityContext:
+        """Build vulnerability context for SQL injection findings."""
+        path = urlparse(url).path
+        
+        # Default impacts for SQL injection
+        data_exposed = ["database"]
+        data_modifiable = ["database"]
+        
+        # Determine authentication requirement
+        # If we found it on a login page (auth bypass), then no auth required
+        # For others, we assume False (public endpoint) unless we know otherwise
+        requires_authentication = False 
+        
+        # Check for scope change indicators
+        # Commands like xp_cmdshell would be scope changed, but standard SQLi is Unchanged
+        escapes_security_boundary = False
+        can_execute_os_commands = False
+        
+        # Specific context for auth bypass
+        if is_auth_bypass:
+            data_exposed.extend(["credentials", "user_data"])
+            
+        return VulnerabilityContext(
+            vulnerability_type="sql_injection",
+            detection_method=detection_method,
+            endpoint=path,
+            parameter=parameter,
+            http_method=method,
+            requires_authentication=requires_authentication,
+            network_accessible=True,
+            data_exposed=data_exposed,
+            data_modifiable=data_modifiable,
+            payload_succeeded=True,
+            target_technology=db_type or "Unknown",
+            escapes_security_boundary=escapes_security_boundary,
+            can_execute_os_commands=can_execute_os_commands,
+            additional_context={
+                "db_type": db_type,
+                "is_auth_bypass": is_auth_bypass
+            }
+        )
 
     def _update_scan_context(
             self,

@@ -16,6 +16,7 @@ from collections import defaultdict
 from .base_agent import BaseSecurityAgent, AgentResult
 from .waf_evasion import WAFEvasionMixin
 from models.vulnerability import Severity, VulnerabilityType
+from scoring import VulnerabilityContext, ConfidenceMethod
 
 if TYPE_CHECKING:
     from core.scan_context import ScanContext
@@ -245,6 +246,46 @@ class XSSAgent(BaseSecurityAgent, WAFEvasionMixin):
         self.tested_params: Set[Tuple[str, str]] = set()  # Track (url, param) pairs
         logger.info(f"XSS Agent initialized with config: {self.config}")
 
+    def _build_xss_context(
+            self,
+            url: str,
+            method: str,
+            parameter: str,
+            detection_method: str,
+            xss_type: str,  # "reflected", "stored", "dom"
+            context_type: str = "unknown"
+    ) -> VulnerabilityContext:
+        """Build vulnerability context for XSS findings."""
+        path = urlparse(url).path
+        
+        # XSS impacts confidentiality (cookies/tokens) and integrity (page content)
+        data_exposed = ["cookies", "session_tokens", "dom_content"]
+        data_modifiable = ["dom_content"]
+        
+        # XSS requires user interaction (victim must visit)
+        requires_user_interaction = True
+        
+        # XSS executes in browser context (different from server), so Scope Changed
+        escapes_security_boundary = True
+        
+        return VulnerabilityContext(
+            vulnerability_type=f"xss_{xss_type}",
+            detection_method=detection_method,
+            endpoint=path,
+            parameter=parameter,
+            http_method=method,
+            requires_authentication=False,
+            network_accessible=True,
+            data_exposed=data_exposed,
+            data_modifiable=data_modifiable,
+            requires_user_interaction=requires_user_interaction,
+            escapes_security_boundary=escapes_security_boundary,
+            payload_succeeded=True,
+            additional_context={
+                "xss_context": context_type
+            }
+        )
+
     def _detect_reflection_context(self, marker: str, response_text: str) -> Tuple[XSSContext, str]:
         """
         Detect the context in which input is reflected.
@@ -314,8 +355,16 @@ class XSSAgent(BaseSecurityAgent, WAFEvasionMixin):
         logger.debug(f"Detected HTML body context for marker: {marker}")
         return XSSContext.HTML_BODY, context
 
-    def _get_payloads_for_context(self, context: XSSContext) -> List[str]:
-        """Get appropriate payloads for the detected context."""
+    def _get_payloads_for_context(
+        self,
+        context: XSSContext,
+        scan_context: Optional["ScanContext"] = None
+    ) -> List[str]:
+        """
+        Get appropriate payloads for the detected context.
+        
+        WAF evasion variants are ONLY added if explicitly enabled in scan_context.
+        """
         base_payloads = self.CONTEXT_PAYLOADS.get(context, self.CONTEXT_PAYLOADS[XSSContext.HTML_BODY]).copy()
 
         # Apply context-specific limit
@@ -326,14 +375,25 @@ class XSSAgent(BaseSecurityAgent, WAFEvasionMixin):
         if context in [XSSContext.HTML_BODY, XSSContext.HTML_ATTRIBUTE]:
             payloads.extend(self.MUTATION_XSS_PAYLOADS[:2])
 
-        # Add WAF evasion variants for top payloads
-        if context in [XSSContext.HTML_BODY, XSSContext.HTML_ATTRIBUTE]:
-            for base_payload in payloads[:2]:
-                try:
-                    variants = self.get_xss_variants(base_payload)
-                    payloads.extend(variants[:1])  # Add 1 variant per base payload
-                except Exception as e:
-                    logger.warning(f"Error generating variants for {base_payload}: {e}")
+        # WAF evasion variants - ONLY if explicitly enabled with user consent
+        # This is disabled by default for legal/ethical compliance
+        waf_evasion_enabled = (
+            scan_context is not None and 
+            getattr(scan_context, 'enable_waf_evasion', False) and
+            getattr(scan_context, 'waf_evasion_consent_given', False)
+        )
+        
+        if waf_evasion_enabled:
+            logger.warning("WAF evasion variants enabled for XSS testing")
+            if context in [XSSContext.HTML_BODY, XSSContext.HTML_ATTRIBUTE]:
+                for base_payload in payloads[:2]:
+                    try:
+                        variants = self.get_xss_variants(base_payload)
+                        payloads.extend(variants[:1])  # Add 1 variant per base payload
+                    except Exception as e:
+                        logger.warning(f"Error generating variants for {base_payload}: {e}")
+        else:
+            logger.debug("WAF evasion disabled (default) - using standard payloads only")
 
         return payloads
 
@@ -760,8 +820,8 @@ class XSSAgent(BaseSecurityAgent, WAFEvasionMixin):
             context, surrounding = self._detect_reflection_context(marker, response_text)
             logger.info(f"Reflection detected in {context.value} context for '{param_name}'")
 
-            # Step 3: Get context-appropriate payloads
-            context_payloads = self._get_payloads_for_context(context)
+            # Step 3: Get context-appropriate payloads (WAF evasion only if enabled)
+            context_payloads = self._get_payloads_for_context(context, scan_context=None)
 
             # Merge with provided payloads
             all_payloads = list(set(context_payloads + payloads[:5]))
@@ -827,6 +887,8 @@ class XSSAgent(BaseSecurityAgent, WAFEvasionMixin):
                         ai_analysis=ai_analysis,
                         vulnerability_type=VulnerabilityType.XSS_REFLECTED,
                         severity=adjusted_severity,
+                        # Confirmed with reflection check -> 100% confidence
+                        confidence=self.calculate_confidence(ConfidenceMethod.CONFIRMED_EXPLOIT),
                         url=url,
                         parameter=param_name,
                         method=method,
@@ -841,7 +903,15 @@ class XSSAgent(BaseSecurityAgent, WAFEvasionMixin):
                             "https://cheatsheetseries.owasp.org/cheatsheets/Cross_Site_Scripting_Prevention_Cheat_Sheet.html"
                         ],
                         request_data={"params": test_params, "payload": payload},
-                        response_snippet=response_text[:500]
+                        response_snippet=response_text[:500],
+                        vulnerability_context=self._build_xss_context(
+                            url=url,
+                            method=method,
+                            parameter=param_name,
+                            detection_method="reflected_analysis",
+                            xss_type="reflected",
+                            context_type=context.value
+                        )
                     )
 
         except Exception as e:
@@ -915,6 +985,8 @@ class XSSAgent(BaseSecurityAgent, WAFEvasionMixin):
                         ai_analysis=ai_analysis,
                         vulnerability_type=VulnerabilityType.XSS_STORED,
                         severity=Severity.CRITICAL,  # Stored XSS is always critical
+                        # Confirmed by retrieval -> 100% confidence
+                        confidence=self.calculate_confidence(ConfidenceMethod.CONFIRMED_EXPLOIT),
                         url=url,
                         parameter=param_name,
                         method=method,
@@ -937,7 +1009,14 @@ class XSSAgent(BaseSecurityAgent, WAFEvasionMixin):
                             "https://owasp.org/www-community/attacks/xss/",
                             "https://cheatsheetseries.owasp.org/cheatsheets/XSS_Filter_Evasion_Cheat_Sheet.html"
                         ],
-                        request_data={"params": submit_params, "payload": payload}
+                        request_data={"params": submit_params, "payload": payload},
+                        vulnerability_context=self._build_xss_context(
+                            url=url,
+                            method=method,
+                            parameter=param_name,
+                            detection_method="stored_analysis",
+                            xss_type="stored"
+                        )
                     )
 
         except Exception as e:
@@ -1002,7 +1081,10 @@ class XSSAgent(BaseSecurityAgent, WAFEvasionMixin):
                     vulnerability_type=VulnerabilityType.XSS_DOM,
                     is_vulnerable=True,
                     severity=Severity.HIGH if high_confidence_flows else Severity.MEDIUM,
-                    confidence=confidence,
+                    confidence=self.calculate_confidence(
+                        ConfidenceMethod.LOGIC_MATCH if high_confidence_flows else ConfidenceMethod.GENERIC_ERROR_OR_AI,
+                        evidence_quality=0.8
+                    ),
                     url=url,
                     title="Potential DOM-based XSS",
                     description=(
@@ -1022,7 +1104,14 @@ class XSSAgent(BaseSecurityAgent, WAFEvasionMixin):
                     reference_links=[
                         "https://owasp.org/www-community/attacks/DOM_Based_XSS",
                         "https://portswigger.net/web-security/cross-site-scripting/dom-based"
-                    ]
+                    ],
+                    vulnerability_context=self._build_xss_context(
+                        url=url,
+                        method="GET",
+                        parameter="DOM",
+                        detection_method="source_sink_tracing",
+                        xss_type="dom"
+                    )
                 )
 
         except Exception as e:

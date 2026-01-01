@@ -417,23 +417,44 @@ class MultiKeyGroqManager:
         
         return report
     
-    def reset_daily_metrics(self):
-        """Reset metrics for new day (call this from cron/scheduler)."""
-        for metrics in self.metrics.values():
-            metrics.total_requests = 0
-            metrics.failed_requests = 0
-            metrics.rate_limit_hits = 0
-            metrics.last_reset = time.time()
-        logger.info("Daily metrics reset")
+    async def close(self):
+        """Close all async clients."""
+        for service, client in self.clients.items():
+            if client:
+                try:
+                    await client.close()
+                    logger.debug(f"Closed Groq client for {service.value}")
+                except Exception as e:
+                    logger.error(f"Error closing Groq client for {service.value}: {e}")
+        self.clients = {}
+        logger.info("All Groq clients closed")
 
 
-# Singleton instance
-groq_manager = MultiKeyGroqManager()
+# Lazy initialization for multi-loop environments
+class LazyGroqManager:
+    def __init__(self):
+        self._instance: Optional[MultiKeyGroqManager] = None
+        
+    def _get_instance(self) -> MultiKeyGroqManager:
+        if self._instance is None:
+            self._instance = MultiKeyGroqManager()
+        return self._instance
+        
+    def __getattr__(self, name):
+        return getattr(self._get_instance(), name)
+
+    async def force_dispose(self):
+        """Dispose of instance to allow re-initialization in new loop."""
+        if self._instance:
+            await self._instance.close()
+            self._instance = None
+
+groq_manager = LazyGroqManager()
 
 
 def get_groq_manager() -> MultiKeyGroqManager:
     """Get singleton manager instance."""
-    return groq_manager
+    return groq_manager._get_instance()
 
 
 # Convenience functions for each service

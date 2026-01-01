@@ -109,8 +109,8 @@ class Organization(Base):
     
     # Subscription
     subscription_tier = Column(SQLEnum(SubscriptionTier), default=SubscriptionTier.FREE)
-    subscription_start = Column(DateTime, nullable=True)
-    subscription_end = Column(DateTime, nullable=True)
+    subscription_start = Column(DateTime(timezone=True), nullable=True)
+    subscription_end = Column(DateTime(timezone=True), nullable=True)
     
     # Quotas
     max_users = Column(Integer, default=5)
@@ -130,11 +130,11 @@ class Organization(Base):
     is_active = Column(Boolean, default=True)
     
     # Timestamps
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
-    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     
     # Soft delete
-    deleted_at = Column(DateTime, nullable=True)
+    deleted_at = Column(DateTime(timezone=True), nullable=True)
     
     # Relationships
     members = relationship("OrganizationMember", back_populates="organization", cascade="all, delete-orphan")
@@ -193,7 +193,7 @@ class OrganizationMember(Base):
     role = Column(SQLEnum(UserRole), default=UserRole.DEVELOPER)
     
     # Timestamps
-    joined_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    joined_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     
     # Relationships
     organization = relationship("Organization", back_populates="members")
@@ -231,21 +231,21 @@ class APIToken(Base):
     # Rate limiting
     rate_limit_per_hour = Column(Integer, default=1000)
     requests_this_hour = Column(Integer, default=0)
-    last_request_at = Column(DateTime, nullable=True)
+    last_request_at = Column(DateTime(timezone=True), nullable=True)
     
     # Usage tracking
     total_requests = Column(Integer, default=0)
-    last_used_at = Column(DateTime, nullable=True)
+    last_used_at = Column(DateTime(timezone=True), nullable=True)
     last_used_ip = Column(String(45), nullable=True)
     
     # Expiration
-    expires_at = Column(DateTime, nullable=True, index=True)
+    expires_at = Column(DateTime(timezone=True), nullable=True, index=True)
     
     # Status
     is_active = Column(Boolean, default=True)
     
     # Timestamps
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     
     # Relationships
     user = relationship("User", back_populates="api_tokens")
@@ -341,7 +341,7 @@ class UserActivity(Base):
     activity_metadata = Column(JSON, default=dict)  # Additional context
     
     # Timestamp
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), index=True)
     
     # Relationships
     user = relationship("User", back_populates="activities")
@@ -377,12 +377,12 @@ class User(Base):
     # Email verification
     email_verified = Column(Boolean, default=False)
     email_verification_token = Column(String(128), nullable=True, index=True)
-    email_verification_sent_at = Column(DateTime, nullable=True)
+    email_verification_sent_at = Column(DateTime(timezone=True), nullable=True)
     
     # Password reset
     password_reset_token = Column(String(128), nullable=True, index=True)
-    password_reset_expires = Column(DateTime, nullable=True)
-    password_changed_at = Column(DateTime, nullable=True)
+    password_reset_expires = Column(DateTime(timezone=True), nullable=True)
+    password_changed_at = Column(DateTime(timezone=True), nullable=True)
     
     # Multi-factor authentication
     mfa_enabled = Column(Boolean, default=False, index=True)
@@ -425,21 +425,21 @@ class User(Base):
     
     # Account locking
     failed_login_attempts = Column(Integer, default=0)
-    locked_until = Column(DateTime, nullable=True, index=True)
+    locked_until = Column(DateTime(timezone=True), nullable=True, index=True)
     lock_reason = Column(String(500), nullable=True)
     
     # Session management
     current_session_token = Column(String(128), nullable=True, index=True)
-    session_expires_at = Column(DateTime, nullable=True)
+    session_expires_at = Column(DateTime(timezone=True), nullable=True)
     
     # Login tracking
-    last_login_at = Column(DateTime, nullable=True, index=True)
+    last_login_at = Column(DateTime(timezone=True), nullable=True, index=True)
     last_login_ip = Column(String(45), nullable=True)
     last_login_user_agent = Column(String(500), nullable=True)
     login_count = Column(Integer, default=0)
     
     # Security events
-    last_password_change = Column(DateTime, nullable=True)
+    last_password_change = Column(DateTime(timezone=True), nullable=True)
     suspicious_activity_count = Column(Integer, default=0)
     
     # ========================================================================
@@ -450,16 +450,16 @@ class User(Base):
     oauth_id = Column(String(255), nullable=True, index=True)
     oauth_access_token = Column(String(512), nullable=True)
     oauth_refresh_token = Column(String(512), nullable=True)
-    oauth_token_expires = Column(DateTime, nullable=True)
+    oauth_token_expires = Column(DateTime(timezone=True), nullable=True)
     
     # ========================================================================
     # SUBSCRIPTION & QUOTAS
     # ========================================================================
     
     subscription_tier = Column(SQLEnum(SubscriptionTier), default=SubscriptionTier.FREE, index=True)
-    subscription_start = Column(DateTime, nullable=True)
-    subscription_end = Column(DateTime, nullable=True)
-    trial_ends_at = Column(DateTime, nullable=True)
+    subscription_start = Column(DateTime(timezone=True), nullable=True)
+    subscription_end = Column(DateTime(timezone=True), nullable=True)
+    trial_ends_at = Column(DateTime(timezone=True), nullable=True)
     
     # Individual quotas (overrides organization quotas if set)
     max_scans_per_month = Column(Integer, nullable=True)
@@ -504,11 +504,11 @@ class User(Base):
     # TIMESTAMPS
     # ========================================================================
     
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
-    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), index=True)
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     
     # Soft delete
-    deleted_at = Column(DateTime, nullable=True, index=True)
+    deleted_at = Column(DateTime(timezone=True), nullable=True, index=True)
     
     # ========================================================================
     # RELATIONSHIPS
@@ -550,7 +550,7 @@ class User(Base):
         import re
         if not username or not re.match(r'^[a-zA-Z0-9_-]{3,100}$', username):
             raise ValueError("Username must be 3-100 characters and contain only letters, numbers, underscores, and hyphens")
-        return username.lower()
+        return username
     
     @validates('website')
     def validate_website(self, key, website):

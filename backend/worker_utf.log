@@ -1,0 +1,453 @@
+﻿2025-12-31 19:59:35 UTC | [32m[1mINFO[0m | [core.database] Initializing database engine: postgresql+asyncpg:***@127.0.0.1:5432/matrix
+2025-12-31 19:59:35 UTC | [32m[1mINFO[0m | [core.database] Database engine initialized successfully
+2025-12-31 19:59:36 UTC | [32m[1mINFO[0m | [core.groq_client] Initialized Groq client for scanner
+2025-12-31 19:59:37 UTC | [32m[1mINFO[0m | [core.groq_client] Initialized Groq client for repo
+2025-12-31 19:59:37 UTC | [32m[1mINFO[0m | [core.groq_client] Initialized Groq client for chatbot
+2025-12-31 19:59:37 UTC | [32m[1mINFO[0m | [core.groq_client] Initialized Groq client for fallback
+2025-12-31 19:59:37 UTC | [32m[1mINFO[0m | [__main__] Connecting to Redis: redis://localhost:6379
+2025-12-31 19:59:37 UTC | [32m[1mINFO[0m | [__main__] Successfully connected to Redis
+2025-12-31 19:59:37 UTC | [32m[1mINFO[0m | [__main__] Worker will process queues: ['scans']
+
+============================================================
+   MATRIX SECURITY SCANNER - RQ WORKER
+============================================================
+  Worker Name: matrix-worker-12032
+  Queues:      scans
+  Burst Mode:  No
+  Started:     2025-12-31 19:59:37 UTC
+============================================================
+
+2025-12-31 19:59:37 UTC | [32m[1mINFO[0m | [__main__] Running on Windows - using SimpleWorker (no forking)
+2025-12-31 19:59:37 UTC | [32m[1mINFO[0m | [__main__] Starting worker 'matrix-worker-12032'...
+2025-12-31 19:59:37 UTC | [32m[1mINFO[0m | [rq.worker] Worker matrix-worker-12032: started with PID 12032, version 2.6.1
+2025-12-31 19:59:37 UTC | [32m[1mINFO[0m | [rq.worker] Worker matrix-worker-12032: subscribing to channel rq:pubsub:matrix-worker-12032
+2025-12-31 19:59:37 UTC | [32m[1mINFO[0m | [rq.worker] *** Listening on scans...
+2025-12-31 19:59:37 UTC | [32m[1mINFO[0m | [rq.worker] Worker matrix-worker-12032: cleaning registries for queue: scans
+2025-12-31 20:06:03 UTC | [32m[1mINFO[0m | [rq.worker] scans: rq_tasks.run_scan_job(2) (scan_2)
+2025-12-31 20:06:03 UTC | [32m[1mINFO[0m | [core.scan_context] LLM cache initialized (enabled: True, TTL: 24h)
+2025-12-31 20:06:03 UTC | [32m[1mINFO[0m | [core.diff_detector] DiffDetector initialized: threshold=0.95, min_bytes=10, mod_threshold=0.6
+2025-12-31 20:06:03 UTC | [32m[1mINFO[0m | [core.rate_limiter] Rate limiter initialized
+2025-12-31 20:06:03 UTC | [32m[1mINFO[0m | [core.request_cache] Request cache initialized
+2025-12-31 20:06:03 UTC | [32m[1mINFO[0m | [agents.base_agent] Initialized github_security agent (timeout=30.0s, retries=3, rate_limiting=True, caching=True)
+2025-12-31 20:06:03 UTC | [32m[1mINFO[0m | [agents.orchestrator] Registered agent: github_security (phase: reconnaissance)
+2025-12-31 20:06:03 UTC | [32m[1mINFO[0m | [core.diff_detector] DiffDetector initialized: threshold=0.95, min_bytes=10, mod_threshold=0.6
+2025-12-31 20:06:03 UTC | [32m[1mINFO[0m | [agents.base_agent] Initialized authentication agent (timeout=30.0s, retries=3, rate_limiting=True, caching=True)
+2025-12-31 20:06:03 UTC | [32m[1mINFO[0m | [agents.orchestrator] Registered agent: authentication (phase: discovery)
+2025-12-31 20:06:03 UTC | [32m[1mINFO[0m | [core.diff_detector] DiffDetector initialized: threshold=0.95, min_bytes=10, mod_threshold=0.6
+2025-12-31 20:06:03 UTC | [32m[1mINFO[0m | [agents.base_agent] Initialized api_security agent (timeout=30.0s, retries=3, rate_limiting=True, caching=True)
+2025-12-31 20:06:03 UTC | [32m[1mINFO[0m | [agents.orchestrator] Registered agent: api_security (phase: discovery)
+2025-12-31 20:06:03 UTC | [32m[1mINFO[0m | [core.diff_detector] DiffDetector initialized: threshold=0.95, min_bytes=10, mod_threshold=0.6
+2025-12-31 20:06:03 UTC | [32m[1mINFO[0m | [agents.base_agent] Initialized sql_injection agent (timeout=30.0s, retries=3, rate_limiting=True, caching=True)
+2025-12-31 20:06:03 UTC | [32m[1mINFO[0m | [agents.orchestrator] Registered agent: sql_injection (phase: exploitation)
+2025-12-31 20:06:03 UTC | [32m[1mINFO[0m | [core.diff_detector] DiffDetector initialized: threshold=0.95, min_bytes=10, mod_threshold=0.6
+2025-12-31 20:06:03 UTC | [32m[1mINFO[0m | [agents.base_agent] Initialized xss agent (timeout=30.0s, retries=3, rate_limiting=True, caching=True)
+2025-12-31 20:06:03 UTC | [32m[1mINFO[0m | [agents.xss_agent] XSS Agent initialized with config: XSSAgentConfig(MAX_ENDPOINTS=20, MAX_PAYLOADS_PER_PARAM=10, MAX_PARAMS_PER_ENDPOINT=5, BATCH_SIZE=3, EARLY_EXIT_ON_FIRST_VULN=True, STORED_XSS_RETRIEVAL_DELAY=1.0, DOM_XSS_CONFIDENCE_THRESHOLD=60, CONTEXT_PAYLOAD_LIMITS={<XSSContext.HTML_BODY: 'html_body'>: 8, <XSSContext.HTML_ATTRIBUTE: 'html_attribute'>: 6, <XSSContext.JAVASCRIPT: 'javascript'>: 10, <XSSContext.URL: 'url'>: 5, <XSSContext.CSS: 'css'>: 4, <XSSContext.JSON: 'json'>: 5})
+2025-12-31 20:06:03 UTC | [32m[1mINFO[0m | [agents.orchestrator] Registered agent: xss (phase: exploitation)
+2025-12-31 20:06:03 UTC | [32m[1mINFO[0m | [core.diff_detector] DiffDetector initialized: threshold=0.95, min_bytes=10, mod_threshold=0.6
+2025-12-31 20:06:03 UTC | [32m[1mINFO[0m | [agents.base_agent] Initialized csrf agent (timeout=30.0s, retries=3, rate_limiting=True, caching=True)
+2025-12-31 20:06:03 UTC | [32m[1mINFO[0m | [agents.orchestrator] Registered agent: csrf (phase: exploitation)
+2025-12-31 20:06:03 UTC | [32m[1mINFO[0m | [core.diff_detector] DiffDetector initialized: threshold=0.95, min_bytes=10, mod_threshold=0.6
+2025-12-31 20:06:03 UTC | [32m[1mINFO[0m | [agents.base_agent] Initialized ssrf agent (timeout=30.0s, retries=3, rate_limiting=True, caching=True)
+2025-12-31 20:06:03 UTC | [32m[1mINFO[0m | [agents.orchestrator] Registered agent: ssrf (phase: exploitation)
+2025-12-31 20:06:03 UTC | [32m[1mINFO[0m | [core.diff_detector] DiffDetector initialized: threshold=0.95, min_bytes=10, mod_threshold=0.6
+2025-12-31 20:06:03 UTC | [32m[1mINFO[0m | [agents.base_agent] Initialized command_injection agent (timeout=30.0s, retries=3, rate_limiting=True, caching=True)
+2025-12-31 20:06:03 UTC | [32m[1mINFO[0m | [agents.orchestrator] Registered agent: command_injection (phase: exploitation)
+2025-12-31 20:06:03 UTC | [32m[1mINFO[0m | [rq_tasks] [RQ Worker] Starting scan job for ID: 2
+2025-12-31 20:06:03 UTC | [32m[1mINFO[0m | [rq_tasks] [RQ Worker] Running async scan for ID: 2
+2026-01-01 01:36:03,824 INFO sqlalchemy.engine.Engine select pg_catalog.version()
+2025-12-31 20:06:03 UTC | [32m[1mINFO[0m | [sqlalchemy.engine.Engine] select pg_catalog.version()
+2026-01-01 01:36:03,824 INFO sqlalchemy.engine.Engine [raw sql] ()
+2025-12-31 20:06:03 UTC | [32m[1mINFO[0m | [sqlalchemy.engine.Engine] [raw sql] ()
+2026-01-01 01:36:03,831 INFO sqlalchemy.engine.Engine select current_schema()
+2025-12-31 20:06:03 UTC | [32m[1mINFO[0m | [sqlalchemy.engine.Engine] select current_schema()
+2026-01-01 01:36:03,831 INFO sqlalchemy.engine.Engine [raw sql] ()
+2025-12-31 20:06:03 UTC | [32m[1mINFO[0m | [sqlalchemy.engine.Engine] [raw sql] ()
+2026-01-01 01:36:03,838 INFO sqlalchemy.engine.Engine show standard_conforming_strings
+2025-12-31 20:06:03 UTC | [32m[1mINFO[0m | [sqlalchemy.engine.Engine] show standard_conforming_strings
+2026-01-01 01:36:03,838 INFO sqlalchemy.engine.Engine [raw sql] ()
+2025-12-31 20:06:03 UTC | [32m[1mINFO[0m | [sqlalchemy.engine.Engine] [raw sql] ()
+2026-01-01 01:36:03,844 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2025-12-31 20:06:03 UTC | [32m[1mINFO[0m | [sqlalchemy.engine.Engine] BEGIN (implicit)
+2026-01-01 01:36:03,865 INFO sqlalchemy.engine.Engine SELECT scans.id, scans.target_url, scans.target_name, scans.target_domain, scans.scan_type, scans.agents_config, scans.agents_enabled, scans.analysis_snapshot, scans.analysis_id, scans.status, scans.progress, scans.current_phase, scans.total_vulnerabilities, scans.critical_count, scans.high_count, scans.medium_count, scans.low_count, scans.info_count, scans.risk_score, scans.owasp_coverage, scans.technology_stack, scans.endpoints_discovered, scans.forms_discovered, scans.requests_sent, scans.avg_response_time_ms, scans.error_message, scans.error_count, scans.warnings, scans.started_at, scans.completed_at, scans.paused_at, scans.resumed_at, scans.compliance_frameworks, scans.report_generated, scans.report_path, scans.enable_waf_evasion, scans.waf_evasion_consent, scans.waf_evasion_consent_at, scans.user_id, scans.deleted_at, scans.created_at, scans.updated_at 
+FROM scans 
+WHERE scans.id = $1::INTEGER
+2025-12-31 20:06:03 UTC | [32m[1mINFO[0m | [sqlalchemy.engine.Engine] SELECT scans.id, scans.target_url, scans.target_name, scans.target_domain, scans.scan_type, scans.agents_config, scans.agents_enabled, scans.analysis_snapshot, scans.analysis_id, scans.status, scans.progress, scans.current_phase, scans.total_vulnerabilities, scans.critical_count, scans.high_count, scans.medium_count, scans.low_count, scans.info_count, scans.risk_score, scans.owasp_coverage, scans.technology_stack, scans.endpoints_discovered, scans.forms_discovered, scans.requests_sent, scans.avg_response_time_ms, scans.error_message, scans.error_count, scans.warnings, scans.started_at, scans.completed_at, scans.paused_at, scans.resumed_at, scans.compliance_frameworks, scans.report_generated, scans.report_path, scans.enable_waf_evasion, scans.waf_evasion_consent, scans.waf_evasion_consent_at, scans.user_id, scans.deleted_at, scans.created_at, scans.updated_at 
+FROM scans 
+WHERE scans.id = $1::INTEGER
+2026-01-01 01:36:03,865 INFO sqlalchemy.engine.Engine [generated in 0.00028s] (2,)
+2025-12-31 20:06:03 UTC | [32m[1mINFO[0m | [sqlalchemy.engine.Engine] [generated in 0.00028s] (2,)
+2026-01-01 01:36:03,903 INFO sqlalchemy.engine.Engine UPDATE scans SET started_at=$1::TIMESTAMP WITH TIME ZONE, updated_at=$2::TIMESTAMP WITH TIME ZONE WHERE scans.id = $3::INTEGER
+2025-12-31 20:06:03 UTC | [32m[1mINFO[0m | [sqlalchemy.engine.Engine] UPDATE scans SET started_at=$1::TIMESTAMP WITH TIME ZONE, updated_at=$2::TIMESTAMP WITH TIME ZONE WHERE scans.id = $3::INTEGER
+2026-01-01 01:36:03,903 INFO sqlalchemy.engine.Engine [generated in 0.00027s] (datetime.datetime(2025, 12, 31, 20, 6, 3, 902456, tzinfo=datetime.timezone.utc), datetime.datetime(2025, 12, 31, 20, 6, 3, 903468, tzinfo=datetime.timezone.utc), 2)
+2025-12-31 20:06:03 UTC | [32m[1mINFO[0m | [sqlalchemy.engine.Engine] [generated in 0.00027s] (datetime.datetime(2025, 12, 31, 20, 6, 3, 902456, tzinfo=datetime.timezone.utc), datetime.datetime(2025, 12, 31, 20, 6, 3, 903468, tzinfo=datetime.timezone.utc), 2)
+2026-01-01 01:36:03,909 INFO sqlalchemy.engine.Engine COMMIT
+2025-12-31 20:06:03 UTC | [32m[1mINFO[0m | [sqlalchemy.engine.Engine] COMMIT
+2025-12-31 20:06:03 UTC | [32m[1mINFO[0m | [rq_tasks] [RQ Worker] Executing orchestrator for http://testphp.vulnweb.com
+2025-12-31 20:06:03 UTC | [32m[1mINFO[0m | [agents.orchestrator] Starting scan of http://testphp.vulnweb.com
+2025-12-31 20:06:03 UTC | [32m[1mINFO[0m | [agents.orchestrator] Enabled agents: ['sql_injection', 'xss', 'auth', 'api_security']
+2025-12-31 20:06:03 UTC | [32m[1mINFO[0m | [agents.orchestrator] Progress: 5% - Analyzing target...
+2026-01-01 01:36:03,921 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2025-12-31 20:06:03 UTC | [32m[1mINFO[0m | [sqlalchemy.engine.Engine] BEGIN (implicit)
+2026-01-01 01:36:03,922 INFO sqlalchemy.engine.Engine UPDATE scans SET progress=$1::INTEGER, updated_at=$2::TIMESTAMP WITH TIME ZONE WHERE scans.id = $3::INTEGER
+2025-12-31 20:06:03 UTC | [32m[1mINFO[0m | [sqlalchemy.engine.Engine] UPDATE scans SET progress=$1::INTEGER, updated_at=$2::TIMESTAMP WITH TIME ZONE WHERE scans.id = $3::INTEGER
+2026-01-01 01:36:03,923 INFO sqlalchemy.engine.Engine [generated in 0.00032s] (5, datetime.datetime(2025, 12, 31, 20, 6, 3, 921997, tzinfo=datetime.timezone.utc), 2)
+2025-12-31 20:06:03 UTC | [32m[1mINFO[0m | [sqlalchemy.engine.Engine] [generated in 0.00032s] (5, datetime.datetime(2025, 12, 31, 20, 6, 3, 921997, tzinfo=datetime.timezone.utc), 2)
+2026-01-01 01:36:03,929 INFO sqlalchemy.engine.Engine COMMIT
+2025-12-31 20:06:03 UTC | [32m[1mINFO[0m | [sqlalchemy.engine.Engine] COMMIT
+[Analyzer] Starting analysis of http://testphp.vulnweb.com
+[Analyzer] Analysis complete. Found 2 endpoints, 3 technologies, 0 API docs
+2025-12-31 20:06:08 UTC | [32m[1mINFO[0m | [agents.orchestrator] Discovered 2 endpoints
+2025-12-31 20:06:08 UTC | [32m[1mINFO[0m | [agents.orchestrator] Target: http://testphp.vulnweb.com
+2025-12-31 20:06:08 UTC | [32m[1mINFO[0m | [agents.orchestrator] Discovered endpoints: 2
+2025-12-31 20:06:08 UTC | [32m[1mINFO[0m | [agents.orchestrator] Progress: 15% - Discovery complete
+2026-01-01 01:36:08,216 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2025-12-31 20:06:08 UTC | [32m[1mINFO[0m | [sqlalchemy.engine.Engine] BEGIN (implicit)
+2026-01-01 01:36:08,216 INFO sqlalchemy.engine.Engine UPDATE scans SET progress=$1::INTEGER, updated_at=$2::TIMESTAMP WITH TIME ZONE WHERE scans.id = $3::INTEGER
+2025-12-31 20:06:08 UTC | [32m[1mINFO[0m | [sqlalchemy.engine.Engine] UPDATE scans SET progress=$1::INTEGER, updated_at=$2::TIMESTAMP WITH TIME ZONE WHERE scans.id = $3::INTEGER
+2026-01-01 01:36:08,217 INFO sqlalchemy.engine.Engine [cached since 4.294s ago] (15, datetime.datetime(2025, 12, 31, 20, 6, 8, 216527, tzinfo=datetime.timezone.utc), 2)
+2025-12-31 20:06:08 UTC | [32m[1mINFO[0m | [sqlalchemy.engine.Engine] [cached since 4.294s ago] (15, datetime.datetime(2025, 12, 31, 20, 6, 8, 216527, tzinfo=datetime.timezone.utc), 2)
+2026-01-01 01:36:08,221 INFO sqlalchemy.engine.Engine COMMIT
+2025-12-31 20:06:08 UTC | [32m[1mINFO[0m | [sqlalchemy.engine.Engine] COMMIT
+2025-12-31 20:06:08 UTC | [32m[1mINFO[0m | [agents.orchestrator] Agents to run: ['sql_injection', 'xss', 'api_security']
+2025-12-31 20:06:08 UTC | [32m[1mINFO[0m | [agents.orchestrator] Executing discovery phase with 1 agents
+2025-12-31 20:06:08 UTC | [32m[1mINFO[0m | [agents.orchestrator] Progress: 50% - Phase: discovery
+2026-01-01 01:36:08,234 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2025-12-31 20:06:08 UTC | [32m[1mINFO[0m | [sqlalchemy.engine.Engine] BEGIN (implicit)
+2026-01-01 01:36:08,234 INFO sqlalchemy.engine.Engine UPDATE scans SET progress=$1::INTEGER, updated_at=$2::TIMESTAMP WITH TIME ZONE WHERE scans.id = $3::INTEGER
+2025-12-31 20:06:08 UTC | [32m[1mINFO[0m | [sqlalchemy.engine.Engine] UPDATE scans SET progress=$1::INTEGER, updated_at=$2::TIMESTAMP WITH TIME ZONE WHERE scans.id = $3::INTEGER
+2026-01-01 01:36:08,235 INFO sqlalchemy.engine.Engine [cached since 4.313s ago] (50, datetime.datetime(2025, 12, 31, 20, 6, 8, 234982, tzinfo=datetime.timezone.utc), 2)
+2025-12-31 20:06:08 UTC | [32m[1mINFO[0m | [sqlalchemy.engine.Engine] [cached since 4.313s ago] (50, datetime.datetime(2025, 12, 31, 20, 6, 8, 234982, tzinfo=datetime.timezone.utc), 2)
+2026-01-01 01:36:08,240 INFO sqlalchemy.engine.Engine COMMIT
+2025-12-31 20:06:08 UTC | [32m[1mINFO[0m | [sqlalchemy.engine.Engine] COMMIT
+2025-12-31 20:06:08 UTC | [32m[1mINFO[0m | [agents.orchestrator] Running api_security (attempt 1/3)
+2025-12-31 20:06:08 UTC | [32m[1mINFO[0m | [agents.orchestrator] Executing api_security...
+2025-12-31 20:06:08 UTC | [32m[1mINFO[0m | [agents.api_security_agent] [API Agent] Starting comprehensive scan on http://testphp.vulnweb.com
+2025-12-31 20:06:14 UTC | [32m[1mINFO[0m | [agents.api_security_agent] [API Agent] Testing 0 endpoints
+2025-12-31 20:06:15 UTC | [32m[1mINFO[0m | [core.groq_client] Generation complete for scanner
+2025-12-31 20:06:15 UTC | [31m[1mERROR[0m | [agents.api_security_agent] [API Agent] Header check error for http://testphp.vulnweb.com: name 'timezone' is not defined
+2025-12-31 20:06:17 UTC | [32m[1mINFO[0m | [agents.api_security_agent] [API Agent] Completed SSL/TLS security checks for http://testphp.vulnweb.com
+2025-12-31 20:06:19 UTC | [32m[1mINFO[0m | [agents.api_security_agent] [API Agent] Scan complete. Found 0 issues
+2025-12-31 20:06:19 UTC | [32m[1mINFO[0m | [agents.orchestrator] api_security found 0 issues
+2025-12-31 20:06:19 UTC | [32m[1mINFO[0m | [agents.orchestrator] Executing exploitation phase with 2 agents
+2025-12-31 20:06:19 UTC | [32m[1mINFO[0m | [agents.orchestrator] Progress: 85% - Phase: exploitation
+2026-01-01 01:36:19,180 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2025-12-31 20:06:19 UTC | [32m[1mINFO[0m | [sqlalchemy.engine.Engine] BEGIN (implicit)
+2026-01-01 01:36:19,181 INFO sqlalchemy.engine.Engine UPDATE scans SET progress=$1::INTEGER, updated_at=$2::TIMESTAMP WITH TIME ZONE WHERE scans.id = $3::INTEGER
+2025-12-31 20:06:19 UTC | [32m[1mINFO[0m | [sqlalchemy.engine.Engine] UPDATE scans SET progress=$1::INTEGER, updated_at=$2::TIMESTAMP WITH TIME ZONE WHERE scans.id = $3::INTEGER
+2026-01-01 01:36:19,181 INFO sqlalchemy.engine.Engine [cached since 15.26s ago] (85, datetime.datetime(2025, 12, 31, 20, 6, 19, 181611, tzinfo=datetime.timezone.utc), 2)
+2025-12-31 20:06:19 UTC | [32m[1mINFO[0m | [sqlalchemy.engine.Engine] [cached since 15.26s ago] (85, datetime.datetime(2025, 12, 31, 20, 6, 19, 181611, tzinfo=datetime.timezone.utc), 2)
+2026-01-01 01:36:19,187 INFO sqlalchemy.engine.Engine COMMIT
+2025-12-31 20:06:19 UTC | [32m[1mINFO[0m | [sqlalchemy.engine.Engine] COMMIT
+2025-12-31 20:06:19 UTC | [32m[1mINFO[0m | [agents.orchestrator] Running xss (attempt 1/3)
+2025-12-31 20:06:19 UTC | [32m[1mINFO[0m | [agents.orchestrator] Executing xss...
+2025-12-31 20:06:19 UTC | [32m[1mINFO[0m | [agents.xss_agent] Selected 11 total payloads for testing
+2025-12-31 20:06:19 UTC | [32m[1mINFO[0m | [agents.xss_agent] Starting XSS scan with 11 payloads (framework: generic)
+2025-12-31 20:06:19 UTC | [32m[1mINFO[0m | [agents.xss_agent] XSS scan complete. Tested 0 endpoints, found 0 vulnerabilities
+2025-12-31 20:06:19 UTC | [32m[1mINFO[0m | [agents.orchestrator] xss found 0 issues
+2025-12-31 20:06:19 UTC | [32m[1mINFO[0m | [agents.orchestrator] Running sql_injection (attempt 1/3)
+2025-12-31 20:06:19 UTC | [32m[1mINFO[0m | [agents.orchestrator] Executing sql_injection...
+[SQL Agent] Detected database: Unknown
+[SQL Agent] Using 18 payloads for testing
+[SQL Agent] Testing 0 endpoints with parameters
+[SQL Agent] Testing login endpoints for SQL injection...
+[SQL Agent] Scan complete: 0 vulnerabilities found
+2025-12-31 20:06:19 UTC | [32m[1mINFO[0m | [agents.orchestrator] sql_injection found 0 issues
+2025-12-31 20:06:19 UTC | [32m[1mINFO[0m | [agents.orchestrator] Progress: 85% - Applying intelligence layer...
+2026-01-01 01:36:19,199 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2025-12-31 20:06:19 UTC | [32m[1mINFO[0m | [sqlalchemy.engine.Engine] BEGIN (implicit)
+2026-01-01 01:36:19,200 INFO sqlalchemy.engine.Engine UPDATE scans SET updated_at=$1::TIMESTAMP WITH TIME ZONE WHERE scans.id = $2::INTEGER
+2025-12-31 20:06:19 UTC | [32m[1mINFO[0m | [sqlalchemy.engine.Engine] UPDATE scans SET updated_at=$1::TIMESTAMP WITH TIME ZONE WHERE scans.id = $2::INTEGER
+2026-01-01 01:36:19,200 INFO sqlalchemy.engine.Engine [generated in 0.00019s] (datetime.datetime(2025, 12, 31, 20, 6, 19, 199899, tzinfo=datetime.timezone.utc), 2)
+2025-12-31 20:06:19 UTC | [32m[1mINFO[0m | [sqlalchemy.engine.Engine] [generated in 0.00019s] (datetime.datetime(2025, 12, 31, 20, 6, 19, 199899, tzinfo=datetime.timezone.utc), 2)
+2026-01-01 01:36:19,206 INFO sqlalchemy.engine.Engine COMMIT
+2025-12-31 20:06:19 UTC | [32m[1mINFO[0m | [sqlalchemy.engine.Engine] COMMIT
+2025-12-31 20:06:19 UTC | [32m[1mINFO[0m | [agents.orchestrator] Progress: 92% - Deduplicating results...
+2026-01-01 01:36:19,215 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2025-12-31 20:06:19 UTC | [32m[1mINFO[0m | [sqlalchemy.engine.Engine] BEGIN (implicit)
+2026-01-01 01:36:19,215 INFO sqlalchemy.engine.Engine UPDATE scans SET progress=$1::INTEGER, updated_at=$2::TIMESTAMP WITH TIME ZONE WHERE scans.id = $3::INTEGER
+2025-12-31 20:06:19 UTC | [32m[1mINFO[0m | [sqlalchemy.engine.Engine] UPDATE scans SET progress=$1::INTEGER, updated_at=$2::TIMESTAMP WITH TIME ZONE WHERE scans.id = $3::INTEGER
+2026-01-01 01:36:19,215 INFO sqlalchemy.engine.Engine [cached since 15.29s ago] (92, datetime.datetime(2025, 12, 31, 20, 6, 19, 215939, tzinfo=datetime.timezone.utc), 2)
+2025-12-31 20:06:19 UTC | [32m[1mINFO[0m | [sqlalchemy.engine.Engine] [cached since 15.29s ago] (92, datetime.datetime(2025, 12, 31, 20, 6, 19, 215939, tzinfo=datetime.timezone.utc), 2)
+2026-01-01 01:36:19,220 INFO sqlalchemy.engine.Engine COMMIT
+2025-12-31 20:06:19 UTC | [32m[1mINFO[0m | [sqlalchemy.engine.Engine] COMMIT
+2025-12-31 20:06:19 UTC | [32m[1mINFO[0m | [agents.orchestrator] Progress: 100% - Scan complete
+2026-01-01 01:36:19,229 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2025-12-31 20:06:19 UTC | [32m[1mINFO[0m | [sqlalchemy.engine.Engine] BEGIN (implicit)
+2026-01-01 01:36:19,230 INFO sqlalchemy.engine.Engine UPDATE scans SET progress=$1::INTEGER, updated_at=$2::TIMESTAMP WITH TIME ZONE WHERE scans.id = $3::INTEGER
+2025-12-31 20:06:19 UTC | [32m[1mINFO[0m | [sqlalchemy.engine.Engine] UPDATE scans SET progress=$1::INTEGER, updated_at=$2::TIMESTAMP WITH TIME ZONE WHERE scans.id = $3::INTEGER
+2026-01-01 01:36:19,230 INFO sqlalchemy.engine.Engine [cached since 15.31s ago] (100, datetime.datetime(2025, 12, 31, 20, 6, 19, 230456, tzinfo=datetime.timezone.utc), 2)
+2025-12-31 20:06:19 UTC | [32m[1mINFO[0m | [sqlalchemy.engine.Engine] [cached since 15.31s ago] (100, datetime.datetime(2025, 12, 31, 20, 6, 19, 230456, tzinfo=datetime.timezone.utc), 2)
+2026-01-01 01:36:19,234 INFO sqlalchemy.engine.Engine COMMIT
+2025-12-31 20:06:19 UTC | [32m[1mINFO[0m | [sqlalchemy.engine.Engine] COMMIT
+2025-12-31 20:06:19 UTC | [32m[1mINFO[0m | [agents.orchestrator] Scan complete. Found 0 vulnerabilities
+2026-01-01 01:36:19,242 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2025-12-31 20:06:19 UTC | [32m[1mINFO[0m | [sqlalchemy.engine.Engine] BEGIN (implicit)
+2026-01-01 01:36:19,243 INFO sqlalchemy.engine.Engine UPDATE scans SET status=$1::scanstatus, completed_at=$2::TIMESTAMP WITH TIME ZONE, updated_at=$3::TIMESTAMP WITH TIME ZONE WHERE scans.id = $4::INTEGER
+2025-12-31 20:06:19 UTC | [32m[1mINFO[0m | [sqlalchemy.engine.Engine] UPDATE scans SET status=$1::scanstatus, completed_at=$2::TIMESTAMP WITH TIME ZONE, updated_at=$3::TIMESTAMP WITH TIME ZONE WHERE scans.id = $4::INTEGER
+2026-01-01 01:36:19,243 INFO sqlalchemy.engine.Engine [generated in 0.00020s] ('COMPLETED', datetime.datetime(2025, 12, 31, 20, 6, 19, 238575, tzinfo=datetime.timezone.utc), datetime.datetime(2025, 12, 31, 20, 6, 19, 242972, tzinfo=datetime.timezone.utc), 2)
+2025-12-31 20:06:19 UTC | [32m[1mINFO[0m | [sqlalchemy.engine.Engine] [generated in 0.00020s] ('COMPLETED', datetime.datetime(2025, 12, 31, 20, 6, 19, 238575, tzinfo=datetime.timezone.utc), datetime.datetime(2025, 12, 31, 20, 6, 19, 242972, tzinfo=datetime.timezone.utc), 2)
+2026-01-01 01:36:19,248 INFO sqlalchemy.engine.Engine COMMIT
+2025-12-31 20:06:19 UTC | [32m[1mINFO[0m | [sqlalchemy.engine.Engine] COMMIT
+2025-12-31 20:06:19 UTC | [32m[1mINFO[0m | [rq_tasks] [RQ Worker] Scan 2 completed: 0 vulnerabilities found
+2025-12-31 20:06:19 UTC | [32m[1mINFO[0m | [agents.orchestrator] Cleanup complete (singleton state preserved)
+2025-12-31 20:06:19 UTC | [32m[1mINFO[0m | [rq.worker] Successfully completed rq_tasks.run_scan_job(2) job in 0:00:15.620295s on worker matrix-worker-12032
+2025-12-31 20:06:19 UTC | [32m[1mINFO[0m | [rq.worker] scans: Job OK (scan_2)
+2025-12-31 20:06:19 UTC | [32m[1mINFO[0m | [rq.worker] Result is kept for 86400 seconds
+2025-12-31 20:06:19 UTC | [32m[1mINFO[0m | [rq.worker] scans: rq_tasks.run_scan_job(2) (scan_2)
+2025-12-31 20:06:19 UTC | [32m[1mINFO[0m | [rq_tasks] [RQ Worker] Starting scan job for ID: 2
+2025-12-31 20:06:19 UTC | [32m[1mINFO[0m | [rq_tasks] [RQ Worker] Running async scan for ID: 2
+2025-12-31 20:06:19 UTC | [31m[1mERROR[0m | [sqlalchemy.pool.impl.AsyncAdaptedQueuePool] Exception terminating connection <AdaptedConnection <asyncpg.connection.Connection object at 0x000001FADDDD87D0>>
+Traceback (most recent call last):
+  File "C:\Users\khanj\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\pool\base.py", line 372, in _close_connection
+    self._dialect.do_terminate(connection)
+  File "C:\Users\khanj\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\dialects\postgresql\asyncpg.py", line 1127, in do_terminate
+    dbapi_connection.terminate()
+  File "C:\Users\khanj\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\connectors\asyncio.py", line 402, in terminate
+    self.await_(asyncio.shield(self._terminate_graceful_close()))  # type: ignore[attr-defined] # noqa: E501
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\khanj\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\util\_concurrency_py3k.py", line 132, in await_only
+    return current.parent.switch(awaitable)  # type: ignore[no-any-return,attr-defined] # noqa: E501
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\khanj\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\util\_concurrency_py3k.py", line 196, in greenlet_spawn
+    value = await result
+            ^^^^^^^^^^^^
+  File "C:\Users\khanj\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\dialects\postgresql\asyncpg.py", line 912, in _terminate_graceful_close
+    await self._connection.close(timeout=2)
+  File "C:\Users\khanj\AppData\Local\Programs\Python\Python312\Lib\site-packages\asyncpg\connection.py", line 1513, in close
+    await self._protocol.close(timeout)
+  File "asyncpg/protocol/protocol.pyx", line 617, in close
+  File "asyncpg/protocol/protocol.pyx", line 650, in asyncpg.protocol.protocol.BaseProtocol._request_cancel
+  File "C:\Users\khanj\AppData\Local\Programs\Python\Python312\Lib\site-packages\asyncpg\connection.py", line 1682, in _cancel_current_command
+    self._cancellations.add(self._loop.create_task(self._cancel(waiter)))
+                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\khanj\AppData\Local\Programs\Python\Python312\Lib\asyncio\base_events.py", line 455, in create_task
+    self._check_closed()
+  File "C:\Users\khanj\AppData\Local\Programs\Python\Python312\Lib\asyncio\base_events.py", line 545, in _check_closed
+    raise RuntimeError('Event loop is closed')
+RuntimeError: Event loop is closed
+2025-12-31 20:06:19 UTC | [31m[1mERROR[0m | [rq_tasks] [RQ Worker] Critical error in scan job 2: 'NoneType' object has no attribute 'send'
+Traceback (most recent call last):
+  File "C:\Users\khanj\AppData\Local\Programs\Python\Python312\Lib\asyncio\base_events.py", line 799, in call_soon
+    self._check_closed()
+  File "C:\Users\khanj\AppData\Local\Programs\Python\Python312\Lib\asyncio\base_events.py", line 545, in _check_closed
+    raise RuntimeError('Event loop is closed')
+RuntimeError: Event loop is closed
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\khanj\Matrix\backend\rq_tasks.py", line 69, in run_scan_job
+    result = loop.run_until_complete(_execute_scan_async(scan_id))
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\khanj\AppData\Local\Programs\Python\Python312\Lib\asyncio\base_events.py", line 691, in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+  File "C:\Users\khanj\Matrix\backend\rq_tasks.py", line 103, in _execute_scan_async
+    result = await db.execute(
+             ^^^^^^^^^^^^^^^^^
+  File "C:\Users\khanj\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\ext\asyncio\session.py", line 449, in execute
+    result = await greenlet_spawn(
+             ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\khanj\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\util\_concurrency_py3k.py", line 201, in greenlet_spawn
+    result = context.throw(*sys.exc_info())
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\khanj\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\orm\session.py", line 2351, in execute
+    return self._execute_internal(
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\khanj\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\orm\session.py", line 2239, in _execute_internal
+    conn = self._connection_for_bind(bind)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\khanj\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\orm\session.py", line 2108, in _connection_for_bind
+    return trans._connection_for_bind(engine, execution_options)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<string>", line 2, in _connection_for_bind
+  File "C:\Users\khanj\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\orm\state_changes.py", line 137, in _go
+    ret_value = fn(self, *arg, **kw)
+                ^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\khanj\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\orm\session.py", line 1187, in _connection_for_bind
+    conn = bind.connect()
+           ^^^^^^^^^^^^^^
+  File "C:\Users\khanj\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\engine\base.py", line 3285, in connect
+    return self._connection_cls(self)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\khanj\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\engine\base.py", line 143, in __init__
+    self._dbapi_connection = engine.raw_connection()
+                             ^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\khanj\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\engine\base.py", line 3309, in raw_connection
+    return self.pool.connect()
+           ^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\khanj\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\pool\base.py", line 447, in connect
+    return _ConnectionFairy._checkout(self)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\khanj\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\pool\base.py", line 1363, in _checkout
+    with util.safe_reraise():
+         ^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\khanj\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\util\langhelpers.py", line 224, in __exit__
+    raise exc_value.with_traceback(exc_tb)
+  File "C:\Users\khanj\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\pool\base.py", line 1301, in _checkout
+    result = pool._dialect._do_ping_w_event(
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\khanj\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\engine\default.py", line 729, in _do_ping_w_event
+    return self.do_ping(dbapi_connection)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\khanj\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\dialects\postgresql\asyncpg.py", line 1160, in do_ping
+    dbapi_connection.ping()
+  File "C:\Users\khanj\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\dialects\postgresql\asyncpg.py", line 818, in ping
+    self._handle_exception(error)
+  File "C:\Users\khanj\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\dialects\postgresql\asyncpg.py", line 799, in _handle_exception
+    raise error
+  File "C:\Users\khanj\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\dialects\postgresql\asyncpg.py", line 816, in ping
+    _ = self.await_(self._async_ping())
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\khanj\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\util\_concurrency_py3k.py", line 132, in await_only
+    return current.parent.switch(awaitable)  # type: ignore[no-any-return,attr-defined] # noqa: E501
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\khanj\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\util\_concurrency_py3k.py", line 196, in greenlet_spawn
+    value = await result
+            ^^^^^^^^^^^^
+  File "C:\Users\khanj\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\dialects\postgresql\asyncpg.py", line 825, in _async_ping
+    await tr.start()
+  File "C:\Users\khanj\AppData\Local\Programs\Python\Python312\Lib\site-packages\asyncpg\transaction.py", line 146, in start
+    await self._connection.execute(query)
+  File "C:\Users\khanj\AppData\Local\Programs\Python\Python312\Lib\site-packages\asyncpg\connection.py", line 354, in execute
+    result = await self._protocol.query(query, timeout)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "asyncpg/protocol/protocol.pyx", line 369, in query
+  File "asyncpg/protocol/protocol.pyx", line 362, in asyncpg.protocol.protocol.BaseProtocol.query
+  File "asyncpg/protocol/coreproto.pyx", line 1174, in asyncpg.protocol.protocol.CoreProtocol._simple_query
+  File "asyncpg/protocol/protocol.pyx", line 956, in asyncpg.protocol.protocol.BaseProtocol._write
+  File "C:\Users\khanj\AppData\Local\Programs\Python\Python312\Lib\asyncio\proactor_events.py", line 366, in write
+    self._loop_writing(data=bytes(data))
+  File "C:\Users\khanj\AppData\Local\Programs\Python\Python312\Lib\asyncio\proactor_events.py", line 402, in _loop_writing
+    self._write_fut = self._loop._proactor.send(self._sock, data)
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'NoneType' object has no attribute 'send'
+2026-01-01 01:36:19,373 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2025-12-31 20:06:19 UTC | [32m[1mINFO[0m | [sqlalchemy.engine.Engine] BEGIN (implicit)
+2026-01-01 01:36:19,374 INFO sqlalchemy.engine.Engine SELECT scans.id, scans.target_url, scans.target_name, scans.target_domain, scans.scan_type, scans.agents_config, scans.agents_enabled, scans.analysis_snapshot, scans.analysis_id, scans.status, scans.progress, scans.current_phase, scans.total_vulnerabilities, scans.critical_count, scans.high_count, scans.medium_count, scans.low_count, scans.info_count, scans.risk_score, scans.owasp_coverage, scans.technology_stack, scans.endpoints_discovered, scans.forms_discovered, scans.requests_sent, scans.avg_response_time_ms, scans.error_message, scans.error_count, scans.warnings, scans.started_at, scans.completed_at, scans.paused_at, scans.resumed_at, scans.compliance_frameworks, scans.report_generated, scans.report_path, scans.enable_waf_evasion, scans.waf_evasion_consent, scans.waf_evasion_consent_at, scans.user_id, scans.deleted_at, scans.created_at, scans.updated_at 
+FROM scans 
+WHERE scans.id = $1::INTEGER
+2025-12-31 20:06:19 UTC | [32m[1mINFO[0m | [sqlalchemy.engine.Engine] SELECT scans.id, scans.target_url, scans.target_name, scans.target_domain, scans.scan_type, scans.agents_config, scans.agents_enabled, scans.analysis_snapshot, scans.analysis_id, scans.status, scans.progress, scans.current_phase, scans.total_vulnerabilities, scans.critical_count, scans.high_count, scans.medium_count, scans.low_count, scans.info_count, scans.risk_score, scans.owasp_coverage, scans.technology_stack, scans.endpoints_discovered, scans.forms_discovered, scans.requests_sent, scans.avg_response_time_ms, scans.error_message, scans.error_count, scans.warnings, scans.started_at, scans.completed_at, scans.paused_at, scans.resumed_at, scans.compliance_frameworks, scans.report_generated, scans.report_path, scans.enable_waf_evasion, scans.waf_evasion_consent, scans.waf_evasion_consent_at, scans.user_id, scans.deleted_at, scans.created_at, scans.updated_at 
+FROM scans 
+WHERE scans.id = $1::INTEGER
+2026-01-01 01:36:19,374 INFO sqlalchemy.engine.Engine [cached since 15.51s ago] (2,)
+2025-12-31 20:06:19 UTC | [32m[1mINFO[0m | [sqlalchemy.engine.Engine] [cached since 15.51s ago] (2,)
+2026-01-01 01:36:19,409 INFO sqlalchemy.engine.Engine UPDATE scans SET status=$1::scanstatus, error_message=$2::VARCHAR, completed_at=$3::TIMESTAMP WITH TIME ZONE, updated_at=$4::TIMESTAMP WITH TIME ZONE WHERE scans.id = $5::INTEGER
+2025-12-31 20:06:19 UTC | [32m[1mINFO[0m | [sqlalchemy.engine.Engine] UPDATE scans SET status=$1::scanstatus, error_message=$2::VARCHAR, completed_at=$3::TIMESTAMP WITH TIME ZONE, updated_at=$4::TIMESTAMP WITH TIME ZONE WHERE scans.id = $5::INTEGER
+2026-01-01 01:36:19,410 INFO sqlalchemy.engine.Engine [generated in 0.00026s] ('FAILED', "'NoneType' object has no attribute 'send'", datetime.datetime(2025, 12, 31, 20, 6, 19, 409467, tzinfo=datetime.timezone.utc), datetime.datetime(2025, 12, 31, 20, 6, 19, 409991, tzinfo=datetime.timezone.utc), 2)
+2025-12-31 20:06:19 UTC | [32m[1mINFO[0m | [sqlalchemy.engine.Engine] [generated in 0.00026s] ('FAILED', "'NoneType' object has no attribute 'send'", datetime.datetime(2025, 12, 31, 20, 6, 19, 409467, tzinfo=datetime.timezone.utc), datetime.datetime(2025, 12, 31, 20, 6, 19, 409991, tzinfo=datetime.timezone.utc), 2)
+2026-01-01 01:36:19,416 INFO sqlalchemy.engine.Engine COMMIT
+2025-12-31 20:06:19 UTC | [32m[1mINFO[0m | [sqlalchemy.engine.Engine] COMMIT
+2025-12-31 20:06:19 UTC | [32m[1mINFO[0m | [rq_tasks] [RQ Worker] Marked scan 2 as failed
+2025-12-31 20:06:19 UTC | [31m[1mERROR[0m | [rq.worker] Worker matrix-worker-12032: job scan_2: exception raised while executing (rq_tasks.run_scan_job)
+Traceback (most recent call last):
+  File "C:\Users\khanj\AppData\Local\Programs\Python\Python312\Lib\asyncio\base_events.py", line 799, in call_soon
+    self._check_closed()
+  File "C:\Users\khanj\AppData\Local\Programs\Python\Python312\Lib\asyncio\base_events.py", line 545, in _check_closed
+    raise RuntimeError('Event loop is closed')
+RuntimeError: Event loop is closed
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\khanj\AppData\Local\Programs\Python\Python312\Lib\site-packages\rq\worker.py", line 1439, in perform_job
+    return_value = job.perform()
+                   ^^^^^^^^^^^^^
+  File "C:\Users\khanj\AppData\Local\Programs\Python\Python312\Lib\site-packages\rq\job.py", line 1318, in perform
+    self._result = self._execute()
+                   ^^^^^^^^^^^^^^^
+  File "C:\Users\khanj\AppData\Local\Programs\Python\Python312\Lib\site-packages\rq\job.py", line 1376, in _execute
+    result = self.func(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\khanj\Matrix\backend\rq_tasks.py", line 69, in run_scan_job
+    result = loop.run_until_complete(_execute_scan_async(scan_id))
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\khanj\AppData\Local\Programs\Python\Python312\Lib\asyncio\base_events.py", line 691, in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+  File "C:\Users\khanj\Matrix\backend\rq_tasks.py", line 103, in _execute_scan_async
+    result = await db.execute(
+             ^^^^^^^^^^^^^^^^^
+  File "C:\Users\khanj\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\ext\asyncio\session.py", line 449, in execute
+    result = await greenlet_spawn(
+             ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\khanj\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\util\_concurrency_py3k.py", line 201, in greenlet_spawn
+    result = context.throw(*sys.exc_info())
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\khanj\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\orm\session.py", line 2351, in execute
+    return self._execute_internal(
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\khanj\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\orm\session.py", line 2239, in _execute_internal
+    conn = self._connection_for_bind(bind)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\khanj\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\orm\session.py", line 2108, in _connection_for_bind
+    return trans._connection_for_bind(engine, execution_options)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<string>", line 2, in _connection_for_bind
+  File "C:\Users\khanj\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\orm\state_changes.py", line 137, in _go
+    ret_value = fn(self, *arg, **kw)
+                ^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\khanj\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\orm\session.py", line 1187, in _connection_for_bind
+    conn = bind.connect()
+           ^^^^^^^^^^^^^^
+  File "C:\Users\khanj\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\engine\base.py", line 3285, in connect
+    return self._connection_cls(self)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\khanj\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\engine\base.py", line 143, in __init__
+    self._dbapi_connection = engine.raw_connection()
+                             ^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\khanj\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\engine\base.py", line 3309, in raw_connection
+    return self.pool.connect()
+           ^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\khanj\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\pool\base.py", line 447, in connect
+    return _ConnectionFairy._checkout(self)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\khanj\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\pool\base.py", line 1363, in _checkout
+    with util.safe_reraise():
+         ^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\khanj\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\util\langhelpers.py", line 224, in __exit__
+    raise exc_value.with_traceback(exc_tb)
+  File "C:\Users\khanj\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\pool\base.py", line 1301, in _checkout
+    result = pool._dialect._do_ping_w_event(
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\khanj\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\engine\default.py", line 729, in _do_ping_w_event
+    return self.do_ping(dbapi_connection)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\khanj\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\dialects\postgresql\asyncpg.py", line 1160, in do_ping
+    dbapi_connection.ping()
+  File "C:\Users\khanj\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\dialects\postgresql\asyncpg.py", line 818, in ping
+    self._handle_exception(error)
+  File "C:\Users\khanj\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\dialects\postgresql\asyncpg.py", line 799, in _handle_exception
+    raise error
+  File "C:\Users\khanj\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\dialects\postgresql\asyncpg.py", line 816, in ping
+    _ = self.await_(self._async_ping())
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\khanj\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\util\_concurrency_py3k.py", line 132, in await_only
+    return current.parent.switch(awaitable)  # type: ignore[no-any-return,attr-defined] # noqa: E501
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\khanj\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\util\_concurrency_py3k.py", line 196, in greenlet_spawn
+    value = await result
+            ^^^^^^^^^^^^
+  File "C:\Users\khanj\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\dialects\postgresql\asyncpg.py", line 825, in _async_ping
+    await tr.start()
+  File "C:\Users\khanj\AppData\Local\Programs\Python\Python312\Lib\site-packages\asyncpg\transaction.py", line 146, in start
+    await self._connection.execute(query)
+  File "C:\Users\khanj\AppData\Local\Programs\Python\Python312\Lib\site-packages\asyncpg\connection.py", line 354, in execute
+    result = await self._protocol.query(query, timeout)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "asyncpg/protocol/protocol.pyx", line 369, in query
+  File "asyncpg/protocol/protocol.pyx", line 362, in asyncpg.protocol.protocol.BaseProtocol.query
+  File "asyncpg/protocol/coreproto.pyx", line 1174, in asyncpg.protocol.protocol.CoreProtocol._simple_query
+  File "asyncpg/protocol/protocol.pyx", line 956, in asyncpg.protocol.protocol.BaseProtocol._write
+  File "C:\Users\khanj\AppData\Local\Programs\Python\Python312\Lib\asyncio\proactor_events.py", line 366, in write
+    self._loop_writing(data=bytes(data))
+  File "C:\Users\khanj\AppData\Local\Programs\Python\Python312\Lib\asyncio\proactor_events.py", line 402, in _loop_writing
+    self._write_fut = self._loop._proactor.send(self._sock, data)
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'NoneType' object has no attribute 'send'
+
+2025-12-31 20:20:28 UTC | [32m[1mINFO[0m | [rq.worker] Worker matrix-worker-12032: cleaning registries for queue: scans
+2025-12-31 20:30:44 UTC | [32m[1mINFO[0m | [rq.worker] Worker matrix-worker-12032: cleaning registries for queue: scans
+2026-01-01 03:39:34 UTC | [31m[1mERROR[0m | [rq.worker] Worker matrix-worker-12032: Redis connection timeout, quitting...
+2026-01-01 03:39:47 UTC | [32m[1mINFO[0m | [rq.worker] Worker matrix-worker-12032: unsubscribing from channel rq:pubsub:matrix-worker-12032
+2026-01-01 03:39:47 UTC | [32m[1mINFO[0m | [__main__] Worker shutdown complete

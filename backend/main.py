@@ -8,6 +8,10 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
 
 from config import get_settings
 from core.database import init_db, close_db
@@ -155,8 +159,23 @@ app = FastAPI(
     redoc_url="/redoc",
 )
 
+
+
+from core.api_limiter import limiter
+
+from core.csrf import CSRFMiddleware
+
+# Initialize Rate Limiter
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+app.add_middleware(CSRFMiddleware) # Added inner to SlowAPI (runs after SlowAPI)
+app.add_middleware(SlowAPIMiddleware)
+
 # Add security headers middleware FIRST (inner layer)
 app.add_middleware(SecurityHeadersMiddleware)
+
+from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
+app.add_middleware(ProxyHeadersMiddleware, trusted_hosts="*")
 
 # Configure CORS LAST (outer layer, runs first on request)
 # Note: allow_origins=["*"] with allow_credentials=True fails in many browsers.
@@ -168,7 +187,10 @@ origins = [
 
 if settings.debug:
     # In debug mode, we might want to allow other local ports or tools
-    origins.append("http://localhost:8000")
+    origins.extend([
+        "http://localhost:8000",
+        "http://127.0.0.1:8000"
+    ])
 
 app.add_middleware(
     CORSMiddleware,
@@ -182,12 +204,14 @@ app.add_middleware(
 # Health check endpoint
 @app.get("/health", tags=["Health"])
 async def health_check():
-    """Health check endpoint."""
-    return {
-        "status": "healthy",
-        "app": settings.app_name,
-        "version": "1.0.0"
-    }
+    """Health check endpoint to verify API and database connectivity."""
+    return {"status": "ok", "message": "Matrix API is operational"}
+
+
+@app.get("/api/csrf/", tags=["Security"])
+async def get_csrf_init():
+    """Endpoint to initialize CSRF cookie for the frontend."""
+    return {"status": "CSRF initialized", "app": settings.app_name, "version": "1.0.0"}
 
 
 # API info endpoint

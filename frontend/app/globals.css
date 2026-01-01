@@ -19,6 +19,224 @@
   --text-muted: #8B7D6B;
 }
 
+/* ======================================
+   SECURITY REPORT MODE
+   Professional, CISO-grade audit styling
+   Wrap scan/report pages in .security-scope
+   ====================================== */
+
+.security-scope {
+  /* Cold, clinical color palette */
+  --bg-primary: #fafafa;
+  --bg-secondary: #ffffff;
+  --bg-elevated: #f5f5f5;
+
+  --text-primary: #1f2937;
+  --text-secondary: #4b5563;
+  --text-muted: #6b7280;
+
+  /* Severity colors - used sparingly */
+  --severity-critical: #dc2626;
+  --severity-high: #ea580c;
+  --severity-medium: #ca8a04;
+  --severity-low: #6b7280;
+  --severity-info: #9ca3af;
+
+  /* Accent - use extremely sparingly */
+  --accent-gold: #bfa36b;
+  --accent-brand: #0f172a;
+
+  /* Reset to clinical baseline */
+  background: #fafafa;
+  color: var(--text-primary);
+}
+
+/* Typography in security mode - prioritize clarity */
+.security-scope h1,
+.security-scope .report-title {
+  font-family: 'Spectral', serif;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--text-primary);
+}
+
+.security-scope h2,
+.security-scope h3,
+.security-scope h4,
+.security-scope table,
+.security-scope p {
+  font-family: 'Inter', system-ui, sans-serif;
+}
+
+/* Kill glassmorphism in security views */
+.security-scope .glass-card,
+.security-scope .stat-card,
+.security-scope .feature-card {
+  background: #ffffff;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  border-radius: 6px;
+  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04);
+  border: 1px solid #e5e7eb;
+  transform: none !important;
+}
+
+.security-scope .glass-card:hover,
+.security-scope .stat-card:hover,
+.security-scope .feature-card:hover {
+  transform: none !important;
+  box-shadow: 0 1px 3px rgba(16, 24, 40, 0.06);
+}
+
+/* Flat, bordered severity badges for security mode */
+.security-scope .severity-critical {
+  background: transparent;
+  color: var(--severity-critical);
+  border: 1px solid var(--severity-critical);
+  border-radius: 4px;
+  font-weight: 600;
+  padding: 0.25rem 0.5rem;
+  font-size: 0.6875rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.security-scope .severity-high {
+  background: transparent;
+  color: var(--severity-high);
+  border: 1px solid var(--severity-high);
+  border-radius: 4px;
+  font-weight: 600;
+  padding: 0.25rem 0.5rem;
+  font-size: 0.6875rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.security-scope .severity-medium {
+  background: transparent;
+  color: var(--severity-medium);
+  border: 1px solid var(--severity-medium);
+  border-radius: 4px;
+  font-weight: 600;
+  padding: 0.25rem 0.5rem;
+  font-size: 0.6875rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.security-scope .severity-low {
+  background: transparent;
+  color: var(--severity-low);
+  border: 1px solid var(--severity-low);
+  border-radius: 4px;
+  font-weight: 600;
+  padding: 0.25rem 0.5rem;
+  font-size: 0.6875rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.security-scope .severity-info {
+  background: transparent;
+  color: var(--severity-info);
+  border: 1px solid var(--severity-info);
+  border-radius: 4px;
+  font-weight: 600;
+  padding: 0.25rem 0.5rem;
+  font-size: 0.6875rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* Kill excessive roundness in security mode */
+.security-scope .rounded-2xl,
+.security-scope .rounded-xl {
+  border-radius: 6px !important;
+}
+
+/* Reduce motion in security mode - stability = trust */
+.security-scope * {
+  transition-duration: 120ms !important;
+}
+
+/* Section headers for security reports */
+.security-scope .section-header {
+  font-size: 0.75rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--text-muted);
+  margin-bottom: 1rem;
+}
+
+/* Table styling for findings */
+.security-scope table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.security-scope th {
+  text-align: left;
+  font-size: 0.6875rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid #e5e7eb;
+  background: #fafafa;
+}
+
+.security-scope td {
+  padding: 0.75rem 1rem;
+  font-size: 0.875rem;
+  color: var(--text-primary);
+  border-bottom: 1px solid #f3f4f6;
+}
+
+.security-scope tr:hover td {
+  background: #f9fafb;
+}
+
+/* Risk posture indicator */
+.security-scope .risk-elevated {
+  color: var(--severity-high);
+  font-weight: 600;
+}
+
+.security-scope .risk-critical {
+  color: var(--severity-critical);
+  font-weight: 600;
+}
+
+.security-scope .risk-moderate {
+  color: var(--severity-medium);
+  font-weight: 600;
+}
+
+.security-scope .risk-low {
+  color: #059669;
+  font-weight: 600;
+}
+
+/* Print/PDF optimized styles */
+@media print {
+  .security-scope {
+    background: white !important;
+    font-size: 12px !important;
+  }
+
+  .security-scope * {
+    transition: none !important;
+    animation: none !important;
+  }
+
+  .security-scope .no-print {
+    display: none !important;
+  }
+}
+
 * {
   box-sizing: border-box;
 }

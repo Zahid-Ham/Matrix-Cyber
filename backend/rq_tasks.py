@@ -15,7 +15,7 @@ from core.database import async_session_maker
 from core.logger import get_logger
 from models.scan import Scan, ScanStatus
 from models.vulnerability import Vulnerability
-from agents.orchestrator import orchestrator
+from agents.orchestrator import AgentOrchestrator
 
 # Initialize logger
 logger = get_logger(__name__)
@@ -61,18 +61,18 @@ def run_scan_job(scan_id: int) -> dict:
     logger.info(f"[RQ Worker] Starting scan job for ID: {scan_id}")
     
     try:
-        # Create new event loop for async execution
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
+        # Force re-initialization of database engine for this job's loop
+        from core.database import db_config
+        db_config.engine = None
+        db_config.session_maker = None
         
-        try:
-            result = loop.run_until_complete(_execute_scan_async(scan_id))
-            return result
-        finally:
-            loop.close()
+        # Use asyncio.run for robust loop and resource management
+        result = asyncio.run(_execute_scan_async(scan_id))
+        return result
             
     except Exception as e:
         logger.error(f"[RQ Worker] Critical error in scan job {scan_id}: {str(e)}", exc_info=True)
+        raise
         
         # Mark scan as failed in a new loop
         try:
@@ -89,127 +89,163 @@ def run_scan_job(scan_id: int) -> dict:
 async def _execute_scan_async(scan_id: int) -> dict:
     """
     Async implementation of scan execution.
-    
-    Args:
-        scan_id: ID of the scan to execute
-        
-    Returns:
-        Dictionary with scan results summary
     """
-    logger.info(f"[RQ Worker] Running async scan for ID: {scan_id}")
+    # Create fresh orchestrator for this specific event loop
+    orchestrator = AgentOrchestrator()
     
-    async with async_session_maker() as db:
-        # Fetch scan record
-        result = await db.execute(
-            select(Scan).where(Scan.id == scan_id)
-        )
-        scan = result.scalar_one_or_none()
+    try:
+        logger.info(f"[RQ Worker] Running async scan for ID: {scan_id}")
         
-        if not scan:
-            logger.error(f"[RQ Worker] Scan {scan_id} not found")
-            return {"error": f"Scan {scan_id} not found"}
-        
-        try:
-            # Update status to RUNNING
-            scan.status = ScanStatus.RUNNING
-            scan.started_at = datetime.now(timezone.utc)
-            scan.progress = 0
-            await db.commit()
-            
-            logger.info(f"[RQ Worker] Executing orchestrator for {scan.target_url}")
-            
-            # Define progress callback
-            async def progress_callback(progress: int, status_msg: str):
-                scan.progress = progress
-                try:
-                    await db.commit()
-                except Exception:
-                    await db.rollback()
-            
-            orchestrator.on_progress = progress_callback
-            
-            # Run the orchestrator
-            results = await orchestrator.run_scan(
-                target_url=scan.target_url,
-                agents_enabled=scan.agents_enabled
+        async with async_session_maker() as db:
+            # Fetch scan record
+            result = await db.execute(
+                select(Scan).where(Scan.id == scan_id)
             )
+            scan = result.scalar_one_or_none()
             
-            # Save vulnerabilities
-            for res in results:
-                vuln = Vulnerability(
-                    scan_id=scan.id,
-                    vulnerability_type=res.vulnerability_type,
-                    severity=res.severity,
-                    title=res.title,
-                    description=res.description,
-                    url=res.url,
-                    file_path=res.file_path,
-                    method=res.method,
-                    parameter=res.parameter,
-                    evidence=res.evidence,
-                    remediation=res.remediation,
-                    ai_analysis=res.ai_analysis,
-                    ai_confidence=res.confidence,
-                    owasp_category=res.owasp_category,
-                    cwe_id=res.cwe_id,
-                    response_snippet=res.response_snippet,
-                    detected_by=res.agent_name,
-                    reference_links=res.reference_links,
-                    likelihood=res.likelihood,
-                    impact=res.impact,
-                    exploitability_rationale=res.exploitability_rationale,
-                    is_suppressed=res.is_suppressed,
-                    is_false_positive=res.is_false_positive,
-                    suppression_reason=res.suppression_reason,
-                    final_verdict=res.final_verdict,
-                    action_required=res.action_required,
-                    detection_confidence=res.detection_confidence,
-                    exploit_confidence=res.exploit_confidence,
-                    scope_impact=res.scope_impact
+            if not scan:
+                logger.error(f"[RQ Worker] Scan {scan_id} not found")
+                return {"error": f"Scan {scan_id} not found"}
+            
+            try:
+                # Update status to RUNNING
+                scan.status = ScanStatus.RUNNING
+                scan.started_at = datetime.now(timezone.utc)
+                scan.progress = 0
+                await db.commit()
+                
+                logger.info(f"[RQ Worker] Starting scan execution for {scan.target_url}")
+                
+                # Setup progress callback
+                async def progress_callback(progress: int, status_message: str):
+                    try:
+                        # Use a fresh session for progress updates
+                        async with async_session_maker() as progress_db:
+                            progress_result = await progress_db.execute(
+                                select(Scan).where(Scan.id == scan_id)
+                            )
+                            p_scan = progress_result.scalar_one_or_none()
+                            if p_scan:
+                                p_scan.progress = progress
+                                p_scan.status_message = status_message
+                                
+                                # Update scanned files if available
+                                if orchestrator.scan_context and orchestrator.scan_context.scanned_files:
+                                    p_scan.scanned_files = orchestrator.scan_context.scanned_files
+                                    
+                                await progress_db.commit()
+                    except Exception as pe:
+                        logger.error(f"Progress update failed: {pe}")
+
+                orchestrator.on_progress = progress_callback
+                
+                # Execute scan
+                results = await orchestrator.run_scan(
+                    scan.target_url,
+                    agents_enabled=scan.agents_enabled,
+                    scan_id=scan.id
                 )
-                db.add(vuln)
+                
+                # Refresh scan object
+                await db.refresh(scan)
+                
+                # Save vulnerabilities
+                for res in results:
+                    vulnerability = Vulnerability(
+                        scan_id=scan.id,
+                        title=res.title,
+                        description=res.description,
+                        severity=res.severity,
+                        vulnerability_type=res.vulnerability_type,
+                        url=res.url,
+                        parameter=res.parameter,
+                        method=res.method,
+                        evidence=res.evidence,
+                        remediation=res.remediation,
+                        remediation_code=res.remediation_code,
+                        ai_analysis=res.ai_analysis,
+                        owasp_category=res.owasp_category,
+                        cwe_id=res.cwe_id,
+                        detected_at=res.detected_at or datetime.now(timezone.utc),
+                        cvss_score=res.cvss_score,
+                        cvss_vector=res.cvss_vector,
+                        likelihood=res.likelihood,
+                        impact=res.impact,
+                        exploit_confidence=res.exploit_confidence,
+                        detection_confidence=res.detection_confidence,
+                        scope_impact=res.scope_impact
+                    )
+                    db.add(vulnerability)
+                    
+                    # Update scan counts
+                    scan.increment_vulnerability_count(res.severity.value)
+                
+                # Calculate OWASP coverage from results (avoids generic relation access)
+                coverage = {}
+                for res in results:
+                    if res.owasp_category:
+                        coverage[res.owasp_category] = coverage.get(res.owasp_category, 0) + 1
+                scan.owasp_coverage = coverage
+                
+                # Update final status
+                scan.status = ScanStatus.COMPLETED
+                scan.progress = 100
+                scan.completed_at = datetime.now(timezone.utc)
+                scan.total_vulnerabilities = len(results)
+                
+                # Save scanned files list
+                if orchestrator.scan_context and orchestrator.scan_context.scanned_files:
+                    scan.scanned_files = orchestrator.scan_context.scanned_files
+
+                await db.commit()
+
+                logger.info(f"[RQ Worker] Scan {scan_id} completed successfully")
+                
+                return {
+                    "scan_id": scan_id,
+                    "status": "COMPLETED",
+                    "total_vulnerabilities": len(results)
+                }
+                
+            except Exception as e:
+                logger.error(f"[RQ Worker] Scan execution failed: {str(e)}", exc_info=True)
+                await db.rollback()
+                
+                # Update scan as failed
+                scan.status = ScanStatus.FAILED
+                scan.error_message = str(e)
+                scan.completed_at = datetime.now(timezone.utc)
+                await db.commit()
+                raise
+                
+    finally:
+        await orchestrator.cleanup()
+        
+        # Comprehensive reset of all loop-dependent core components
+        try:
+            # 1. Database
+            from core.database import db_config
+            await db_config.force_dispose()
             
-            # Update scan with results
-            scan.total_vulnerabilities = len(results)
-            scan.critical_count = sum(1 for r in results if r.severity.value == 'critical')
-            scan.high_count = sum(1 for r in results if r.severity.value == 'high')
-            scan.medium_count = sum(1 for r in results if r.severity.value == 'medium')
-            scan.low_count = sum(1 for r in results if r.severity.value == 'low')
-            scan.info_count = sum(1 for r in results if r.severity.value == 'info')
+            # 2. Groq AI Manager
+            from core.groq_client import groq_manager
+            await groq_manager.force_dispose()
             
-            scan.status = ScanStatus.COMPLETED
-            scan.completed_at = datetime.now(timezone.utc)
-            scan.progress = 100
+            # 3. Rate Limiter
+            from core.rate_limiter import _global_rate_limiter
+            _global_rate_limiter.force_reset()
             
-            await db.commit()
+            # 4. Request Cache
+            from core.request_cache import _global_cache
+            _global_cache.force_reset()
             
-            logger.info(
-                f"[RQ Worker] Scan {scan_id} completed: "
-                f"{len(results)} vulnerabilities found"
-            )
+            # 5. Evidence Tracker
+            from core.evidence_tracker import reset_evidence_tracker
+            reset_evidence_tracker()
             
-            return {
-                "scan_id": scan_id,
-                "status": "completed",
-                "vulnerabilities_found": len(results),
-                "critical": scan.critical_count,
-                "high": scan.high_count,
-                "medium": scan.medium_count,
-                "low": scan.low_count,
-            }
-            
-        except Exception as e:
-            logger.error(f"[RQ Worker] Scan execution failed: {str(e)}", exc_info=True)
-            
-            scan.status = ScanStatus.FAILED
-            scan.error_message = str(e)
-            scan.completed_at = datetime.now(timezone.utc)
-            await db.commit()
-            
-            raise
-            
-        finally:
-            await orchestrator.cleanup()
+            logger.info("[RQ Worker] All core components reset for next job")
+        except Exception as reset_error:
+            logger.error(f"[RQ Worker] Error during backend component reset: {reset_error}")
 
 
 async def _mark_scan_failed(scan_id: int, error_message: str) -> None:

@@ -1,13 +1,6 @@
 """
-GitHub Security Agent - Enhanced version with intelligent scanning capabilities.
 
 Features:
-- Intelligent file prioritization
-- Advanced secret detection with entropy analysis
-- GitHub API rate limiting and authentication
-- Dependency vulnerability scanning
-- Dynamic branch detection
-- Performance optimizations and caching
 """
 import re
 import httpx
@@ -17,7 +10,7 @@ import math
 from typing import List, Dict, Any, Optional, Set, Tuple, TYPE_CHECKING
 from urllib.parse import urlparse
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime, timezone, timedelta
 from collections import defaultdict
 import logging
 from .dependency_parser import DependencyParser, ParsedDependency
@@ -25,6 +18,7 @@ from .dependency_parser import DependencyParser, ParsedDependency
 from .base_agent import BaseSecurityAgent, AgentResult
 from models.vulnerability import Severity, VulnerabilityType
 from core.groq_client import repo_generate, groq_manager, ModelTier
+from scoring import VulnerabilityContext, ConfidenceMethod
 
 if TYPE_CHECKING:
     from core.scan_context import ScanContext
@@ -59,7 +53,7 @@ class GithubAgentConfig:
 
     # Dependency Scanning
     ENABLE_DEPENDENCY_SCAN = True
-    OSV_API_URL = "https://api.osv.dev/v1/query"
+    OSV_API_URL = "https://api.osv.dev/v1/querybatch"
 
     # File Priority Scores
     PRIORITY_CRITICAL = 100  # Config files with secrets
@@ -75,7 +69,7 @@ class SecretPattern:
     PATTERNS = [
         # Cloud Providers
         (r'AKIA[0-9A-Z]{16}', "AWS Access Key", True),
-        (r'(?i)aws(.{0,20})?[\'\"][0-9a-zA-Z\/+]{40}[\'\"]', "AWS Secret Key", True),
+        (r'(?i)aws(.{0,20})?[\'"][0-9a-zA-Z\/+]{40}[\'"]', "AWS Secret Key", True),
         (r'AIza[0-9A-Za-z\-_]{35}', "Google API Key", True),
         (r'ya29\.[0-9A-Za-z\-_]+', "Google OAuth Token", True),
 
@@ -142,6 +136,28 @@ class DependencyFile:
     }
 
 
+class NodeTaintRules:
+    """Node.js/Express Taint Analysis Rules"""
+    
+    SOURCES = [
+        'req.body', 'req.query', 'req.params', 'req.headers', 'req.cookies',
+        'process.env', 'process.argv'
+    ]
+    
+    SINKS = [
+        # SQL Injection
+        'sequelize.query', '.query', '.execute', '.raw', 'QueryTypes',
+        # Command Injection
+        'exec', 'spawn', 'execSync', 'spawnSync', 'child_process',
+        # RCE / Code Injection
+        'eval', 'setTimeout', 'setInterval', 'new Function', 'vm.runInContext',
+        # Crypto
+        'crypto.createCipher', 'jwt.sign',
+        # File System
+        'fs.readFile', 'fs.writeFile', 'fs.unlink'
+    ]
+
+
 # ==================== Data Classes ====================
 
 @dataclass
@@ -154,8 +170,8 @@ class FileMetadata:
     sha: str = ""
 
     def __lt__(self, other):
-        """Enable sorting by priority (higher first)"""
-        return self.priority_score > other.priority_score
+        """Enable sorting by priority (lower score is 'less')"""
+        return self.priority_score < other.priority_score
 
 
 @dataclass
@@ -173,7 +189,7 @@ class RateLimitInfo:
     @property
     def seconds_until_reset(self) -> float:
         """Time until rate limit resets"""
-        return max(0, (self.reset_time - datetime.now()).total_seconds())
+        return max(0, (self.reset_time - datetime.now(timezone.utc)).total_seconds())
 
 
 @dataclass
@@ -196,23 +212,15 @@ class CacheEntry:
 
     def is_expired(self) -> bool:
         """Check if cache entry has expired"""
-        age = datetime.now() - self.timestamp
+        age = datetime.now(timezone.utc) - self.timestamp
         return age.total_seconds() > GithubAgentConfig.CACHE_TTL_SECONDS
 
 
 # ==================== Main Agent Class ====================
 
-class GithubSecurityAgent(BaseSecurityAgent):
-    """
-    Enhanced GitHub Security Agent with intelligent scanning.
+# ==================== Main Agent Class ====================
 
-    Features:
-    - Smart file prioritization
-    - Advanced secret detection with entropy analysis
-    - GitHub API rate limiting
-    - Dependency vulnerability scanning
-    - Caching and performance optimizations
-    """
+class GithubSecurityAgent(BaseSecurityAgent):
 
     agent_name = "github_security"
     agent_description = "Analyzes GitHub repository source code with advanced detection"
@@ -221,7 +229,6 @@ class GithubSecurityAgent(BaseSecurityAgent):
         VulnerabilityType.SQL_INJECTION,
         VulnerabilityType.XSS_STORED,
         VulnerabilityType.PATH_TRAVERSAL,
-        VulnerabilityType.OTHER
     ]
 
     # Files and directories to ignore
@@ -248,6 +255,55 @@ class GithubSecurityAgent(BaseSecurityAgent):
 
     # Paths that indicate high-value files
     HIGH_VALUE_PATHS = ['auth', 'login', 'api', 'config', 'admin', 'security', 'payment', 'database', 'db']
+
+    def _build_github_context(
+            self,
+            url: str,
+            vulnerability_type: str,
+            description: str,
+            detection_method: str = "static_analysis",
+            confidentiality_impact: str = "None",
+            integrity_impact: str = "None",
+            availability_impact: str = "None",
+            metric_impact: float = 5.0,
+            data_exposed: List[str] = None
+    ) -> VulnerabilityContext:
+        """Build VulnerabilityContext for GitHub findings."""
+        # Map High/Low impacts to context fields for CVSS calculation
+        exposed = list(data_exposed) if data_exposed else []
+        modifiable = []
+        disruption = False
+        
+        if confidentiality_impact and confidentiality_impact.lower() == "high":
+            if "secrets" not in exposed: exposed.append("secrets")
+            if "database" not in exposed: exposed.append("database")
+            
+        if integrity_impact and integrity_impact.lower() == "high":
+            modifiable.append("filesystem")
+            modifiable.append("database")
+            
+        if availability_impact and availability_impact.lower() == "high":
+            disruption = True
+
+        return VulnerabilityContext(
+            vulnerability_type=vulnerability_type,
+            detection_method=detection_method,
+            endpoint=url,
+            parameter="source_code",
+            http_method="GET",
+            requires_user_interaction=False,
+            requires_authentication=False, # Code is accessible
+            escapes_security_boundary=False,
+            payload_succeeded=True,
+            data_exposed=exposed,
+            data_modifiable=modifiable,
+            service_disruption_possible=disruption,
+            additional_context={
+                "description": description,
+                "impact_level": metric_impact,
+                "dos_severity": "complete" if disruption else "none"
+            }
+        )
 
     def __init__(self, github_token: Optional[str] = None, **kwargs):
         super().__init__(**kwargs)
@@ -303,19 +359,25 @@ class GithubSecurityAgent(BaseSecurityAgent):
 
             # 3. AI Hotspot Detection
             logger.info("Step 1/4: Identifying high-risk hotspots via AI...")
-            hotspots = await self._get_hotspots_via_ai(files, owner, repo, default_branch)
+            raw_hotspots = await self._get_hotspots_via_ai(files, owner, repo, default_branch)
+            hotspots = {h.strip('/') for h in raw_hotspots}
             logger.info(f"AI identified {len(hotspots)} potential hotspots")
 
             # 4. Static Scan + Content Fetching
             limit = GithubAgentConfig.MAX_FILES_TO_SCAN
-            logger.info(f"Step 2/4: Running static security scan on {min(limit, len(files))} files...")
-            all_scannable = self._prioritize_files(files)
-            files_to_scan = all_scannable[:limit]
+            logger.info("Step 2/4: Running static security scan...")
+            priority_metadata = self._prioritize_files(files, hotspots)
+            files_to_scan = priority_metadata[:limit]
             
+            # Populate scanned files in context early so frontend can show them
+            if scan_context:
+                scan_context.scanned_files = [f.path for f in files_to_scan]
+
             static_results, hotspot_data = await self._scan_files_batch(
-                owner, repo, default_branch, files_to_scan, set(hotspots)
+                owner, repo, default_branch, files_to_scan, hotspots
             )
             results.extend(static_results)
+
 
             # 5. Batch AI Analysis for Hotspots
             if hotspot_data and groq_manager.is_configured:
@@ -338,14 +400,65 @@ class GithubSecurityAgent(BaseSecurityAgent):
 
         return results
 
+    def _parse_github_url(self, url: str) -> Optional[Tuple[str, str]]:
+        """Parse owner and repo from GitHub URL."""
+        try:
+            parsed = urlparse(url)
+            path_parts = [p for p in parsed.path.split('/') if p]
+            if len(path_parts) >= 2:
+                return path_parts[0], path_parts[1]
+            return None
+        except Exception:
+            return None
+
+    def _is_interesting_for_ai(self, file_path: str) -> bool:
+        """Filter files for AI analysis based on extension."""
+        interesting_exts = {
+            '.js', '.jsx', '.ts', '.tsx',  # JavaScript/TypeScript
+            '.py',                         # Python
+            '.go',                         # Go
+            '.java',                       # Java
+            '.php',                        # PHP
+            '.rb',                         # Ruby
+            '.c', '.cpp', '.h',            # C/C++
+            '.cs',                         # C#
+            '.sh', '.bash',                # Shell
+            '.yml', '.yaml', '.json'       # Config
+        }
+        return any(file_path.lower().endswith(ext) for ext in interesting_exts)
+
+    def _get_cached_content(self, file_path: str, sha: str) -> Optional[str]:
+        """Retrieve local cached content if available and valid."""
+        if not GithubAgentConfig.ENABLE_CACHE:
+            return None
+            
+        entry = self.file_cache.get(file_path)
+        if entry:
+            if entry.file_sha == sha and not entry.is_expired():
+                self.stats['cache_hits'] += 1
+                return entry.content
+            # Invalid or expired
+            del self.file_cache[file_path]
+            
+        self.stats['cache_misses'] += 1
+        return None
+
+    def _cache_content(self, file_path: str, content: str, sha: str) -> None:
+        """Cache file content locally."""
+        if not GithubAgentConfig.ENABLE_CACHE:
+            return
+
+        self.file_cache[file_path] = CacheEntry(
+            content=content,
+            timestamp=datetime.now(timezone.utc),
+            file_sha=sha
+        )
+
     # ==================== GitHub API Methods ====================
 
     async def _get_default_branch(self, owner: str, repo: str) -> str:
         """
         Dynamically detect the repository's default branch.
-
-        Returns:
-            Branch name (e.g., 'main', 'master', 'develop')
         """
         url = f"https://api.github.com/repos/{owner}/{repo}"
 
@@ -368,9 +481,6 @@ class GithubSecurityAgent(BaseSecurityAgent):
     ) -> List[Dict[str, Any]]:
         """
         Fetch recursive file list from GitHub API.
-
-        Returns:
-            List of file metadata dictionaries
         """
         url = f"https://api.github.com/repos/{owner}/{repo}/git/trees/{branch}?recursive=1"
 
@@ -400,14 +510,6 @@ class GithubSecurityAgent(BaseSecurityAgent):
     ) -> Optional[httpx.Response]:
         """
         Make a GitHub API request with rate limiting and retry logic.
-
-        Args:
-            client: HTTP client
-            url: API endpoint URL
-            retry_count: Current retry attempt
-
-        Returns:
-            Response object or None on failure
         """
         headers = {'Accept': 'application/vnd.github.v3+json'}
 
@@ -491,9 +593,7 @@ class GithubSecurityAgent(BaseSecurityAgent):
             repo: str,
             branch: str
     ) -> List[AgentResult]:
-        """
-        Analyze multiple hotspots in batches to save Groq RPM.
-        """
+        logger.info(f"DEBUG: Starting AI analysis batch with {len(hotspot_data)} items")
         all_results = []
         
         # Batching parameters (Optimized for Free Tier)
@@ -582,6 +682,18 @@ Return a JSON object with this structure:
 }}
 """
         
+        # Inject Taint Analysis Instructions for Node.js
+        if any(f['path'].endswith(('.js', '.ts', '.jsx', '.tsx')) for f in batch):
+            prompt += """
+TAINT ANALYSIS INSTRUCTION (Node.js/Express):
+1. Identify SOURCES (User Input): req.body, req.query, req.params, req.headers.
+2. Identify SINKS (Execution): sequelize.query, exec, eval, new Function, fs.*.
+3. Trace data flow from SOURCES to SINKS.
+4. Flag a vulnerability ONLY if user input reaches a sink without proper sanitization.
+5. Watch out for 'concatenation SQLi' (e.g. "SELECT * FROM users WHERE email = '" + req.body.email + "'").
+6. Watch out for 'command injection' (e.g. exec("ping " + host)).
+"""
+        
         system_prompt = "You are a senior security researcher. Provide deep logic review. Output ONLY valid JSON."
         
         async with self._ai_semaphore:
@@ -597,31 +709,54 @@ Return a JSON object with this structure:
         
         try:
             content_str = response.get('content', '{}')
-            # Extract JSON if it's wrapped in markers
-            if "```json" in content_str:
-                content_str = content_str.split("```json")[1].split("```")[0].strip()
-            elif "```" in content_str:
-                content_str = content_str.split("```")[1].split("```")[0].strip()
+            
+            # Robust JSON extraction
+            import re
+            json_match = re.search(r'```json\s*(\{.*?\})\s*```', content_str, re.DOTALL)
+            if not json_match:
+                json_match = re.search(r'(\{.*\})', content_str, re.DOTALL)
+            
+            if json_match:
+                content_str = json_match.group(1)
                 
             data = json.loads(content_str)
             vulns = data.get('vulnerabilities', [])
             
             for v in vulns:
                 file_path = v.get('file', batch[0]['path']) # Fallback to first file in batch
+                vuln_type = self._map_vuln_type(v.get('type'))
+                
+                # Determine context based on AI output
+                confidentiality = "High" if "sensitive" in v.get('type', '').lower() or "secret" in v.get('type', '').lower() else "Low"
+                integrity = "High" if "injection" in v.get('type', '').lower() else "Low"
+                
                 results.append(self.create_result(
-                    vulnerability_type=self._map_vuln_type(v.get('type')),
+                    vulnerability_type=vuln_type,
                     is_vulnerable=True,
                     severity=self._map_severity(v.get('severity')),
-                    confidence=int(v.get('confidence', 70)),
+                    confidence=self.calculate_confidence(
+                        ConfidenceMethod.GENERIC_ERROR_OR_AI,
+                        evidence_quality=min(float(v.get('confidence', 50)) / 100.0, 1.0)
+                    ),
                     url=f"https://github.com/{owner}/{repo}/blob/{branch}/{file_path}#L{v.get('line', 1)}",
                     file_path=file_path,
                     title=v.get('title', 'Security Finding'),
                     description=v.get('description', ''),
                     evidence=v.get('evidence', f"Found in {file_path}"),
                     remediation=v.get('fix', ''),
-                    ai_analysis=json.dumps(v)
+                    ai_analysis=json.dumps(v),
+                    vulnerability_context=self._build_github_context(
+                        f"https://github.com/{owner}/{repo}/blob/{branch}/{file_path}",
+                        vuln_type,
+                        v.get('description', ''),
+                        "ai_code_analysis",
+                        confidentiality_impact=confidentiality,
+                        integrity_impact=integrity,
+                        metric_impact=7.0 # AI typically checks logical flaws
+                    )
                 ))
         except Exception as e:
+            print(f"DEBUG EXCEPTION: {e}")
             logger.error(f"Failed to parse AI batch response: {e}")
             
         return results
@@ -644,10 +779,6 @@ Return a JSON object with this structure:
             repo: str,
             branch: str
     ) -> List[str]:
-        """
-        Ask AI to identify high-risk files based on file names and structure.
-        Returns a list of file paths to prioritize for deep analysis.
-        """
         import json
         
         # Filter for files that are actually interesting for AI logic audit
@@ -655,10 +786,13 @@ Return a JSON object with this structure:
         
         # If no interesting files found, fallback to scannable files
         if not file_paths:
+            logger.info("DEBUG: No interesting files found for AI")
             file_paths = [f['path'] for f in files if self._is_scannable_file(f['path'])]
+            logger.info(f"DEBUG: Fallback to scannable files: {len(file_paths)}")
 
         # If repo is small, we can just treat everything as a hotspot (up to a limit)
         if len(file_paths) < 15:
+            logger.info(f"DEBUG: Small repo, returning all {len(file_paths)} files as hotspots")
             return file_paths[:15]
             
         # Get README content if available for context
@@ -675,212 +809,128 @@ Return a JSON object with this structure:
                     pass
                 break
 
-        # Construct Prompt
-        # We need to be careful with token limits if there are HUGE number of files.
-        # We'll take top 1000 files by depth/importance heuristics if needed, but for now just pass list.
-        truncated_list = file_paths[:600] # Safe limit for prompt
+            if f['path'].lower() == 'readme.md':
+                # We need content. If it's not fetched yet, we can't use it easily in this phase 
+                # without extra API call. For now, assume we might have it or skip.
+                # Actually, in _fetch_repo_files we only got metadata. 
+                # So we'll skip detailed README content unless we fetch it.
+                # To save time/tokens, we'll just use filenames.
+                pass
+                
+        # Optimization: Only send the file paths, not full dicts, to save tokens
+        # Sort by depth (shallower files often architecture definers)
+        files_sorted = sorted(file_paths, key=lambda p: p.count('/'))
         
+        # Limit to top 300 most likely relevant files for the prompt
+        truncated_list = files_sorted[:300]
+
         prompt = f"""
-You are a senior security engineer performing a code audit.
-I will provide a list of files from a repository.
-Your task is to identify the top 10-15 files that are MOST CRITICAL for a security review.
+You are a security auditor. 
+Repo: {owner}/{repo} (Branch: {branch})
 
-Focus On:
-1. Authentication & Authorization (e.g. auth.py, login.ts, controllers)
-2. Sensitive Data Handling (e.g. payments.js, secrets.py)
-3. API Routes / Endpoints (e.g. routes.py, app.js)
-4. Database Models / Queries (e.g. models.py, db.go)
-5. Dangerous Logic (e.g. upload.php, exec.js)
-
-Repo Context (README snippet):
-{readme_content}
-
+Task: Select top 10 files most likely to contain security vulnerabilities (Auth, API, Secrets, SQL).
 File List:
 {json.dumps(truncated_list)}
 
-Return ONLY a valid JSON object with a single key "hotspots" containing the list of file paths.
-Example: {{"hotspots": ["src/auth.ts", "backend/main.py"]}}
+Return a JSON object with this key "hotspots" containing a list of strings: {{"hotspots": ["path/to/file1", "path/to/file2"]}}
 """
-        
+
+        system_prompt = "You are a senior security architect. Identify high-risk attack surfaces."
+
+        async with self._ai_semaphore:
+            self.stats['ai_calls'] += 1
+            response = await repo_generate(
+                prompt=prompt,
+                system_prompt=system_prompt,
+                tier=ModelTier.FAST, # Use Fast model for this listing task
+                json_mode=True,
+                max_tokens=256,
+                temperature=0.1
+            )
+            
         try:
-            async with self._ai_semaphore:
-                self.stats['ai_calls'] += 1
-                response = await repo_generate(
-                    prompt=prompt,
-                    system_prompt="You are a security expert. JSON output only.",
-                    json_mode=True,
-                    tier=ModelTier.FAST, # Fast model is sufficient for selection
-                    max_tokens=384,
-                    temperature=0.1
-                )
+            content_str = response.get('content', '{}')
             
-            content = response.get('content', '{}')
-            data = json.loads(content)
+            # Robust JSON extraction
+            import re
+            json_match = re.search(r'```json\s*(\{.*?\})\s*```', content_str, re.DOTALL)
+            if not json_match:
+                json_match = re.search(r'(\{.*\})', content_str, re.DOTALL)
             
-            hotspots = []
-            if isinstance(data, dict):
-                hotspots = data.get('hotspots', [])
-            elif isinstance(data, list):
-                hotspots = data
+            if json_match:
+                content_str = json_match.group(1)
                 
-            # Clean up and validate
-            valid_hotspots = [h for h in hotspots if isinstance(h, str) and h in file_paths]
-            
-            # Check if we got nothing meaningful
-            if not valid_hotspots:
-                logger.warning("AI returned no valid hotspots, falling back to heuristics")
-                # Fallback to top priority files from heuristics
-                header_files = self._prioritize_files(files)
-                return [f.path for f in header_files[:10]]
-                
-            return valid_hotspots
-            
+            data = json.loads(content_str)
+            return data.get('hotspots', [])
         except Exception as e:
-            logger.error(f"Hotspot detection failed: {e}")
-            # Fallback
-            header_files = self._prioritize_files(files)
-            return [f.path for f in header_files[:10]]
-
-    # ==================== File Prioritization ====================
-
-    def _prioritize_files(self, files: List[Dict[str, Any]]) -> List[FileMetadata]:
-        """
-        Intelligently prioritize files for scanning based on security value.
-
-        Scoring system:
-        - Critical (100): Config files likely containing secrets
-        - High (80): Authentication, API, security-related files
-        - Medium (60): Database, connection files
-        - Low (40): Regular source code
-        - Minimal (20): Test files, documentation
-
-        Returns:
-            Sorted list of FileMetadata (highest priority first)
-        """
-        prioritized = []
-
-        for file_info in files:
-            path = file_info['path'].lower()
-
-            # Skip ignored files
-            if not self._is_scannable_file(path):
-                continue
-
-            # Calculate priority score
-            score = self._calculate_file_priority(path)
-
-            if score > 0:
-                metadata = FileMetadata(
-                    path=file_info['path'],
-                    priority_score=score,
-                    file_type=self._get_file_type(path),
-                    size=file_info.get('size', 0),
-                    sha=file_info.get('sha', '')
-                )
-                prioritized.append(metadata)
-
-        # Sort by priority (highest first)
-        prioritized.sort()
-
-        logger.info(f"Prioritized {len(prioritized)} scannable files")
-        return prioritized
-
+            logger.error(f"Failed to parse Hotspot AI response: {e}")
+            return file_paths[:10] # Fallback
     def _calculate_file_priority(self, path: str) -> int:
         """Calculate priority score for a file"""
         score = 0
-        filename = path.split('/')[-1].lower()
+        path_lower = path.lower()
+        filename = path_lower.split('/')[-1]
 
-        # Critical: Config files with secrets
-        if any(cf in filename for cf in self.CRITICAL_FILES):
-            score = GithubAgentConfig.PRIORITY_CRITICAL
+        # 1. Critical Checks (Immediate Return)
+        if filename in self.CRITICAL_FILES:
+            return GithubAgentConfig.PRIORITY_CRITICAL
 
-        # High: Security-sensitive paths
-        elif any(hvp in path for hvp in self.HIGH_VALUE_PATHS):
+        # 2. Assign Base Score by Extension/Type
+        if filename in DependencyFile.PACKAGE_FILES:
             score = GithubAgentConfig.PRIORITY_HIGH
-
-        # High: Dependency files
-        elif filename in DependencyFile.PACKAGE_FILES:
-            score = GithubAgentConfig.PRIORITY_HIGH
-
-        # Medium: Config files
-        elif any(path.endswith(ext) for ext in self.CONFIG_EXTENSIONS):
+        elif any(path_lower.endswith(e) for e in self.CONFIG_EXTENSIONS):
             score = GithubAgentConfig.PRIORITY_MEDIUM
-
-        # Medium: Source code in critical languages
-        elif any(path.endswith(ext) for ext in self.HIGH_PRIORITY_EXTENSIONS):
+        # Boost JS/TS files for Node sink analysis
+        elif any(path_lower.endswith(e) for e in ['.js', '.ts', '.jsx', '.tsx']):
+            score = 75 
+        elif any(path_lower.endswith(e) for e in self.HIGH_PRIORITY_EXTENSIONS):
             score = GithubAgentConfig.PRIORITY_MEDIUM
-
-        # Low: Test files
-        elif 'test' in path or 'spec' in path or '__test__' in path:
+        elif any(x in path_lower for x in ['test', 'spec', '__test__']):
             score = GithubAgentConfig.PRIORITY_MINIMAL
-
-        # Low: Documentation
-        elif path.endswith('.md') or 'doc' in path:
+        elif path_lower.endswith('.md') or 'doc' in path_lower:
             score = GithubAgentConfig.PRIORITY_MINIMAL
-
         else:
             score = GithubAgentConfig.PRIORITY_LOW
 
-        # Boost for files in root or config directories
-        if path.count('/') <= 1 or '/config/' in path:
+        # 3. Context Modifiers
+        # If the file is in a high-value path (api, auth, etc.), ensure it's at least HIGH priority
+        if any(hvp in path_lower for hvp in self.HIGH_VALUE_PATHS):
+            score = max(score, GithubAgentConfig.PRIORITY_HIGH)
+
+        # Boost root files or config directories
+        if path.count('/') <= 1 or '/config/' in path_lower:
             score += 10
 
-        return score
+        return min(score, 100)
 
-        return True
+    def _prioritize_files(self, files: List[Dict[str, Any]], hotspots: Set[str] = None) -> List[FileMetadata]:
+        """
+        Intelligently prioritize files for scanning based on security value.
+        """
+        priority_files = []
+        hotspots = hotspots or set()
+        
+        for file_info in files:
+            path = file_info.get('path', '')
+            score = self._calculate_file_priority(path)
+            
+            # Boost score for AI-identified hotspots
+            if path.strip('/') in hotspots:
+                score = max(score, 95)
+            
+            priority_files.append(FileMetadata(
+                path=path,
+                priority_score=score,
+                file_type=file_info.get('type', 'blob'),
+                size=file_info.get('size', 0),
+                sha=file_info.get('sha', '')
+            ))
+            
+        # Sort by priority score descending
+        priority_files.sort(reverse=True)
+        return priority_files
 
     def _is_scannable_file(self, path: str) -> bool:
-        """Check if file should be scanned"""
-        # Check ignored directories
-        if any(ignored_dir in path for ignored_dir in self.IGNORE_DIRS):
-            return False
-
-        # Check ignored extensions
-        ext = '.' + path.split('.')[-1] if '.' in path else ''
-        if ext.lower() in self.IGNORE_EXTENSIONS:
-            return False
-
-        return True
-
-    def _is_interesting_for_ai(self, path: str) -> bool:
-        """
-        Check if file is worth deep AI logic analysis.
-        Skips documentation, low-risk configs, and assets to save tokens/RPM.
-        """
-        path_lower = path.lower()
-        
-        # Skip ignored dirs first
-        if any(ignored_dir in path_lower for ignored_dir in self.IGNORE_DIRS):
-            return False
-
-        # Extensions that typically contain interesting logic
-        ai_extensions = {
-            '.py', '.js', '.ts', '.tsx', '.jsx', '.go', '.java', 
-            '.php', '.rb', '.cs', '.yaml', '.yml', '.toml', '.rs', '.cpp', '.c'
-        }
-        
-        # Skip documentation and plain text
-        if any(path_lower.endswith(ext) for ext in ['.md', '.txt', '.json', '.lock', '.csv', '.sql']):
-             # Keep .json/.toml/.sql ONLY if they look like config or auth
-             if any(kw in path_lower for kw in ['auth', 'config', 'security', 'api', 'credential', 'secret']):
-                 return True
-             return False
-                 
-        # Prioritize high-value patterns
-        high_value_keywords = [
-            'auth', 'login', 'api', 'config', 'db', 'sql', 'serialize', 
-            'session', 'token', 'crypto', 'user', 'permission', 'admin',
-            'route', 'controller', 'handler', 'middleware', 'jwt'
-        ]
-        if any(kw in path_lower for kw in high_value_keywords):
-            return True
-            
-        # Fallback to extension check
-        ext = '.' + path_lower.split('.')[-1] if '.' in path_lower else ''
-        return ext in ai_extensions
-
-    def _get_file_type(self, path: str) -> str:
-        """Determine file type from path"""
         ext = path.split('.')[-1].lower() if '.' in path else 'unknown'
         return ext
 
@@ -894,9 +944,6 @@ Example: {{"hotspots": ["src/auth.ts", "backend/main.py"]}}
             files: List[FileMetadata],
             hotspots: Set[str] = None
     ) -> Tuple[List[AgentResult], List[Dict[str, str]]]:
-        """
-        Scan files in controlled batches. Returns (results, hotspot_data_list).
-        """
         results = []
         hotspot_data = []
         hotspots = hotspots or set()
@@ -905,10 +952,12 @@ Example: {{"hotspots": ["src/auth.ts", "backend/main.py"]}}
         for i in range(0, len(files), GithubAgentConfig.CONCURRENT_FILE_LIMIT):
             batch = files[i:i + GithubAgentConfig.CONCURRENT_FILE_LIMIT]
 
-            tasks = [
-                self._analyze_file(owner, repo, branch, file_meta, is_hotspot=(file_meta.path in hotspots))
-                for file_meta in batch
-            ]
+            tasks = []
+            for file_meta in batch:
+                is_hs = file_meta.path.strip('/') in hotspots
+                tasks.append(
+                    self._analyze_file(owner, repo, branch, file_meta, is_hotspot=is_hs)
+                )
 
             batch_results = await asyncio.gather(*tasks, return_exceptions=True)
 
@@ -935,9 +984,6 @@ Example: {{"hotspots": ["src/auth.ts", "backend/main.py"]}}
             file_meta: FileMetadata,
             is_hotspot: bool = False
     ) -> Tuple[List[AgentResult], Optional[Dict[str, str]]]:
-        """
-        Download and analyze a single file. Returns static results and hotspot content if applicable.
-        """
         results = []
         file_path = file_meta.path
 
@@ -989,12 +1035,6 @@ Example: {{"hotspots": ["src/auth.ts", "backend/main.py"]}}
             branch: str,
             file_path: str
     ) -> List[AgentResult]:
-        """
-        Scan file content for secrets with entropy analysis.
-
-        Returns:
-            List of secret vulnerability findings
-        """
         results = []
         secrets_found = []
 
@@ -1021,7 +1061,6 @@ Example: {{"hotspots": ["src/auth.ts", "backend/main.py"]}}
                     secret_value,
                     entropy,
                     high_confidence,
-                    file_path
                 )
 
                 secret_match = SecretMatch(
@@ -1062,7 +1101,15 @@ Example: {{"hotspots": ["src/auth.ts", "backend/main.py"]}}
                 ),
                 owasp_category="A01:2021 – Broken Access Control",
                 cwe_id="CWE-798",
-                ai_analysis=f"Entropy: {secret.entropy:.2f} | Confidence: {secret.confidence}%"
+                ai_analysis=f"Entropy: {secret.entropy:.2f} | Confidence: {secret.confidence}%",
+                vulnerability_context=self._build_github_context(
+                    file_path, "sensitive_data_exposure",
+                    f"Exposed secret: {secret.pattern_name}",
+                    "regex_entropy",
+                    confidentiality_impact="High",
+                    metric_impact=9.0 if self._determine_secret_severity(secret) == Severity.CRITICAL else 7.0,
+                    data_exposed=[secret.pattern_name]
+                )
             ))
 
             self.stats['secrets_found'] += 1
@@ -1070,13 +1117,6 @@ Example: {{"hotspots": ["src/auth.ts", "backend/main.py"]}}
         return results
 
     def _calculate_entropy(self, text: str) -> float:
-        """
-        Calculate Shannon entropy of a string.
-        Higher entropy indicates more randomness (likely a real secret).
-
-        Returns:
-            Entropy value (0-8 for base-2)
-        """
         if not text:
             return 0.0
 
@@ -1096,23 +1136,6 @@ Example: {{"hotspots": ["src/auth.ts", "backend/main.py"]}}
         return entropy
 
     def _is_valid_secret(self, secret: str, entropy: float, high_confidence: bool) -> bool:
-        """Validate if a matched string is likely a real secret"""
-        # Length check
-        if len(secret) < GithubAgentConfig.SECRET_MIN_LENGTH:
-            return False
-
-        if len(secret) > GithubAgentConfig.SECRET_MAX_LENGTH:
-            return False
-
-        # High confidence patterns (like AWS keys) pass with lower entropy
-        if high_confidence:
-            return entropy >= 3.0
-
-        # Low confidence patterns (like JWTs) need higher entropy
-        return entropy >= GithubAgentConfig.MIN_ENTROPY_THRESHOLD
-
-    def _is_false_positive_secret(self, secret: str, content: str, file_path: str) -> bool:
-        """Check if secret is likely a false positive"""
         secret_lower = secret.lower()
         file_path_lower = file_path.lower()
 
@@ -1151,31 +1174,6 @@ Example: {{"hotspots": ["src/auth.ts", "backend/main.py"]}}
             high_confidence: bool,
             file_path: str
     ) -> int:
-        """Calculate confidence score for secret detection (0-100)"""
-        confidence = 70  # Base confidence
-
-        # High confidence pattern bonus
-        if high_confidence:
-            confidence += 20
-
-        # Entropy bonus
-        if entropy > 5.0:
-            confidence += 10
-        elif entropy > 4.0:
-            confidence += 5
-
-        # File location bonus
-        if '.env' in file_path or 'config' in file_path.lower():
-            confidence += 10
-
-        # Penalize if in test/example files (but we already filter these)
-        if 'test' in file_path.lower() or 'example' in file_path.lower():
-            confidence -= 30
-
-        return min(100, max(0, confidence))
-
-    def _determine_secret_severity(self, secret: SecretMatch) -> Severity:
-        """Determine severity based on secret type and confidence"""
         # Critical cloud provider keys and payment keys
         critical_types = [
             'AWS Access Key', 'AWS Secret Key',
@@ -1196,441 +1194,31 @@ Example: {{"hotspots": ["src/auth.ts", "backend/main.py"]}}
         return Severity.LOW
 
     def _obfuscate_secret(self, secret: str) -> str:
-        """Obfuscate secret for display"""
-        if len(secret) <= 10:
-            return '*' * len(secret)
+        if len(secret) <= 8:
+            return "*" * len(secret)
+        return secret[:4] + "*" * (len(secret) - 8) + secret[-4:]
 
-        # Show first 5 and last 5 characters
-        return secret[:5] + '...' + secret[-5:]
-
-    async def _ai_analysis(
-            self,
-            content: str,
-            file_path: str,
-            owner: str,
-            repo: str,
-            branch: str
-    ) -> List[AgentResult]:
-        """Perform AI-powered static analysis"""
-        results = []
-
-        # SKIP Lockfiles (too large, handled by dependency scanner)
-        if any(file_path.endswith(ext) for ext in ['.lock', '-lock.json', '.lockb', '.yaml', '.yml']):
-            return []
-
-        try:
-            # Construct analysis prompt
-            system_prompt = """You are a specialized security code analyzer.
-Analyze the provided code for security vulnerabilities only.
-Focus on high-confidence issues like XSS, SQL Injection, RCE, Path Traversal, and Hardcoded Secrets.
-Ignored minor code style issues.
-
-Response Format (JSON):
-{
-  "vulnerabilities": [
-    {
-      "type": "Vulnerability Type",
-      "severity": "CRITICAL|HIGH|MEDIUM|LOW",
-      "line": <line_number>,
-      "description": "Brief description of the issue",
-      "fix": "Suggested fix",
-      "confidence": "HIGH|MEDIUM"
-    }
-  ]
-}
-If no vulnerabilities are found, return {"vulnerabilities": []}."""
-
-            # Determine model tier based on content size
-            tier = ModelTier.STANDARD
-            truncation_limit = 20000 # Default to 20k chars
-            
-            # If content is large (>20k chars), use Large Context model
-            if len(content) > 20000:
-                tier = ModelTier.LARGE_CONTEXT
-                truncation_limit = 100000 # Up to 100k chars for Mixtral
-            
-            # If very small config file, use Fast model
-            elif len(content) < 1000 and any(x in file_path.lower() for x in ['.env', '.json', '.yaml', '.yml', '.ini']):
-                tier = ModelTier.FAST
-
-            user_prompt = f"Analyze this file: {file_path}\n\nCode:\n{content[:truncation_limit]}"
-
-            response = await repo_generate(
-                prompt=user_prompt,
-                system_prompt=system_prompt,
-                tier=tier,
-                json_mode=True
-            )
-            
-            import json
-            ai_results = json.loads(response['content'])
-
-            if 'vulnerabilities' in ai_results:
-                for vuln in ai_results['vulnerabilities']:
-                    results.append(self.create_result(
-                        vulnerability_type=self._map_vuln_type(vuln.get('type')),
-                        is_vulnerable=True,
-                        severity=self._map_severity(vuln.get('severity')),
-                        confidence=int(vuln.get('confidence', 70) if str(vuln.get('confidence', 70)).isdigit() else 70),
-                        url=f"https://github.com/{owner}/{repo}/blob/{branch}/{file_path}#L{vuln.get('line_number', 1)}",
-                        title=vuln.get('title', 'Security Finding'),
-                        description=vuln.get('description', ''),
-                        evidence=vuln.get('evidence', ''),
-                        remediation=vuln.get('remediation', ''),
-                        ai_analysis=str(ai_results)
-                    ))
-        except Exception as e:
-            logger.error(f"AI analysis error for {file_path}: {e}")
-
-        return results
-
-    # ==================== Dependency Scanning ====================
-
-    async def _scan_dependencies(
-            self,
-            owner: str,
-            repo: str,
-            branch: str,
-            all_files: List[Dict[str, Any]]
-    ) -> List[AgentResult]:
-        """
-        Scan dependency files for known vulnerabilities.
-        Enhanced to handle all major package managers.
-
-        Returns:
-            List of dependency vulnerability findings
-        """
-        results = []
-
-        # Find ALL dependency files (not just package files)
-        dep_files = []
-        for f in all_files:
-            filename = f['path'].split('/')[-1]
-            if filename in DependencyFile.PACKAGE_FILES:
-                dep_files.append(f)
-
-        if not dep_files:
-            logger.info("No dependency files found")
-            return []
-
-        logger.info(f"Found {len(dep_files)} dependency files: {[f['path'] for f in dep_files]}")
-
-        # Track stats by ecosystem
-        ecosystem_stats = {}
-
-        for dep_file in dep_files[:10]:  # Increased limit to 10 files
-            file_path = dep_file['path']
-            filename = file_path.split('/')[-1]
-            ecosystem = DependencyFile.PACKAGE_FILES.get(filename)
-
-            if not ecosystem:
-                continue
-
-            try:
-                # Download dependency file
-                raw_url = f"https://raw.githubusercontent.com/{owner}/{repo}/{branch}/{file_path}"
-                async with httpx.AsyncClient() as client:
-                    response = await client.get(raw_url, timeout=GithubAgentConfig.DEFAULT_TIMEOUT)
-
-                    if response.status_code != 200:
-                        logger.warning(f"Could not fetch {file_path}: {response.status_code}")
-                        continue
-
-                    content = response.text
-
-                # Parse dependencies using enhanced parser
-                dependencies = self._parse_dependencies(content, ecosystem, file_path)
-
-                if not dependencies:
-                    logger.info(f"No parseable dependencies in {file_path}")
-                    continue
-
-                # Track stats
-                ecosystem_stats[ecosystem] = ecosystem_stats.get(ecosystem, 0) + len(dependencies)
-
-                logger.info(f"Scanning {len(dependencies)} dependencies from {file_path}")
-
-                # Check for vulnerabilities (in batches to avoid overwhelming the API)
-                batch_size = 10
-                for i in range(0, len(dependencies), batch_size):
-                    batch = dependencies[i:i + batch_size]
-
-                    vuln_results = await self._check_dependency_vulnerabilities(
-                        batch, ecosystem, owner, repo, branch, file_path
-                    )
-
-                    results.extend(vuln_results)
-
-                    # Small delay between batches
-                    if i + batch_size < len(dependencies):
-                        await asyncio.sleep(0.5)
-
-            except Exception as e:
-                logger.error(f"Error scanning dependency file {file_path}: {e}", exc_info=True)
-
-        # Log ecosystem statistics
-        if ecosystem_stats:
-            logger.info("Dependency scan statistics by ecosystem:")
-            for eco, count in ecosystem_stats.items():
-                logger.info(f"  {eco}: {count} dependencies")
-
-        return results
-
-    def _parse_dependencies(
-            self,
-            content: str,
-            ecosystem: str,
-            file_path: str
-    ) -> List[Tuple[str, str]]:
-        """
-        Parse dependency file to extract package names and versions.
-        Uses the enhanced DependencyParser for comprehensive support.
-        """
-        dependencies: List[Tuple[str, str]] = []
-
-        try:
-            # Parse using the enhanced parser
-            parsed_deps = DependencyParser.parse(content, ecosystem, file_path)
-
-            if not parsed_deps:
-                return []
-
-            # Deduplicate dependencies
-            parsed_deps = DependencyParser.deduplicate(parsed_deps)
-
-            # Convert to tuple format
-            for dep in parsed_deps:
-                # Skip wildcard versions
-                if dep.version and dep.version != "*":
-                    dependencies.append((dep.name, dep.version))
-                    logger.debug(
-                        f"Parsed dependency: {dep.name}@{dep.version} from {file_path}"
-                    )
-
-            logger.info(
-                f"Extracted {len(dependencies)} dependencies from {file_path}"
-            )
-
-        except Exception as e:
-            logger.error(
-                f"Error parsing dependencies from {file_path}: {e}",
-                exc_info=True
-            )
-
-        return dependencies
-
-    async def _check_dependency_vulnerabilities(
-            self,
-            dependencies: List[Tuple[str, str]],
-            ecosystem: str,
-            owner: str,
-            repo: str,
-            branch: str,
-            file_path: str
-    ) -> List[AgentResult]:
-        """Check dependencies against OSV vulnerability database"""
-        results = []
-
-        # Map ecosystem names to OSV format
-        ecosystem_map = {
-            'npm': 'npm',
-            'pip': 'PyPI',
-            'go': 'Go',
-            'ruby': 'RubyGems',
-            'php': 'Packagist',
-            'maven': 'Maven',
-            'rust': 'crates.io'
-        }
-
-        osv_ecosystem = ecosystem_map.get(ecosystem)
-        if not osv_ecosystem:
-            return []
-
-        for pkg_name, version in dependencies[:20]:  # Limit to 20 packages
-            cache_key = f"{osv_ecosystem}:{pkg_name}:{version}"
-
-            # Check cache
-            if cache_key in self.vulnerability_db_cache:
-                vulnerabilities = self.vulnerability_db_cache[cache_key]
-            else:
-                vulnerabilities = await self._query_osv_api(osv_ecosystem, pkg_name, version)
-                self.vulnerability_db_cache[cache_key] = vulnerabilities
-
-            # Create results for each vulnerability
-            for vuln in vulnerabilities:
-                results.append(self.create_result(
-                    vulnerability_type=VulnerabilityType.OTHER,
-                    is_vulnerable=True,
-                    severity=self._map_osv_severity(vuln),
-                    confidence=95,  # High confidence from CVE database
-                    url=f"https://github.com/{owner}/{repo}/blob/{branch}/{file_path}",
-                    title=f"Vulnerable Dependency: {pkg_name} {version}",
-                    description=(
-                        f"Package '{pkg_name}' version {version} has a known vulnerability: "
-                        f"{vuln.get('summary', 'No summary available')}"
-                    ),
-                    evidence=f"CVE: {vuln.get('id', 'Unknown')}",
-                    remediation=(
-                        f"Update '{pkg_name}' to a patched version. "
-                        f"Affected versions: {', '.join(vuln.get('affected_versions', []))}. "
-                        f"Fixed versions: {', '.join(vuln.get('fixed_versions', ['See advisory']))}."
-                    ),
-                    owasp_category="A06:2021 – Vulnerable and Outdated Components",
-                    cwe_id="CWE-1104"
-                ))
-
-        return results
-
-    async def _query_osv_api(
-            self,
-            ecosystem: str,
-            package: str,
-            version: str
-    ) -> List[Dict[str, Any]]:
-        """Query OSV.dev API for vulnerability information"""
-        try:
-            async with httpx.AsyncClient() as client:
-                payload = {
-                    "package": {
-                        "name": package,
-                        "ecosystem": ecosystem
-                    },
-                    "version": version
-                }
-
-                response = await client.post(
-                    GithubAgentConfig.OSV_API_URL,
-                    json=payload,
-                    timeout=10.0
-                )
-
-                if response.status_code == 200:
-                    data = response.json()
-                    return self._parse_osv_response(data)
-
-        except Exception as e:
-            logger.error(f"Error querying OSV API for {package}: {e}")
-
-        return []
-
-    def _parse_osv_response(self, data: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """Parse OSV API response into simplified vulnerability objects"""
-        vulnerabilities = []
-
-        for vuln in data.get('vulns', []):
-            vulnerabilities.append({
-                'id': vuln.get('id', 'Unknown'),
-                'summary': vuln.get('summary', 'No summary available'),
-                'severity': vuln.get('severity', [{}])[0].get('type', 'UNKNOWN'),
-                'affected_versions': self._extract_affected_versions(vuln),
-                'fixed_versions': self._extract_fixed_versions(vuln)
-            })
-
-        return vulnerabilities
-
-    def _extract_affected_versions(self, vuln: Dict[str, Any]) -> List[str]:
-        """Extract affected version ranges from vulnerability"""
-        versions = []
-        for affected in vuln.get('affected', []):
-            for version_range in affected.get('ranges', []):
-                events = version_range.get('events', [])
-                for event in events:
-                    if 'introduced' in event:
-                        versions.append(f">={event['introduced']}")
-                    if 'fixed' in event:
-                        versions.append(f"<{event['fixed']}")
-        return versions
-
-    def _extract_fixed_versions(self, vuln: Dict[str, Any]) -> List[str]:
-        """Extract fixed versions from vulnerability"""
-        versions = []
-        for affected in vuln.get('affected', []):
-            for version_range in affected.get('ranges', []):
-                events = version_range.get('events', [])
-                for event in events:
-                    if 'fixed' in event:
-                        versions.append(event['fixed'])
-        return versions or ['See advisory']
-
-    def _map_osv_severity(self, vuln: Dict[str, Any]) -> Severity:
-        """Map OSV severity to internal Severity enum"""
-        severity = vuln.get('severity', 'UNKNOWN').upper()
-
-        if 'CRITICAL' in severity:
+    def _determine_secret_severity(self, secret: SecretMatch) -> str:
+        if secret.pattern_name == "Private Key" or secret.pattern_name == "AWS Secret Key":
             return Severity.CRITICAL
-        elif 'HIGH' in severity:
-            return Severity.HIGH
-        elif 'MEDIUM' in severity or 'MODERATE' in severity:
+        if secret.confidence >= 90:
+            return Severity.CRITICAL
+        if secret.confidence >= 70:
             return Severity.MEDIUM
-        elif 'LOW' in severity:
-            return Severity.LOW
-        else:
-            return Severity.INFO
+        return Severity.LOW
 
-    # ==================== Caching ====================
+    def _map_vuln_type(self, type_str: str) -> str:
+        type_str = type_str.lower()
+        if 'sql' in type_str: return VulnerabilityType.SQL_INJECTION
+        if 'xss' in type_str: return VulnerabilityType.XSS_REFLECTED
+        if 'rce' in type_str or 'command' in type_str: return VulnerabilityType.OS_COMMAND_INJECTION
+        if 'path' in type_str or 'traversal' in type_str: return VulnerabilityType.PATH_TRAVERSAL
+        if 'secret' in type_str or 'sensitive' in type_str: return VulnerabilityType.SENSITIVE_DATA_EXPOSURE
+        if 'auth' in type_str: return VulnerabilityType.BROKEN_AUTH
+        return VulnerabilityType.SECURITY_MISCONFIG
 
-    def _get_cached_content(self, file_path: str, sha: str) -> Optional[str]:
-        """Get cached file content if available and valid"""
-        if not GithubAgentConfig.ENABLE_CACHE:
-            return None
-
-        cache_entry = self.file_cache.get(file_path)
-
-        if cache_entry:
-            # Check if cache is expired
-            if cache_entry.is_expired():
-                del self.file_cache[file_path]
-                return None
-
-            # Check if file has changed (SHA mismatch)
-            if sha and cache_entry.file_sha != sha:
-                del self.file_cache[file_path]
-                return None
-
-            return cache_entry.content
-
-        return None
-
-    def _cache_content(self, file_path: str, content: str, sha: str) -> None:
-        """Cache file content"""
-        if not GithubAgentConfig.ENABLE_CACHE:
-            return
-
-        self.file_cache[file_path] = CacheEntry(
-            content=content,
-            timestamp=datetime.now(),
-            file_sha=sha
-        )
-
-    # ==================== Utility Methods ====================
-
-    def _parse_github_url(self, url: str) -> Optional[Tuple[str, str]]:
-        """Extract owner and repo name from GitHub URL"""
-        parsed = urlparse(url)
-        if parsed.netloc != 'github.com':
-            return None
-
-        path_parts = parsed.path.strip('/').split('/')
-        if len(path_parts) >= 2:
-            return path_parts[0], path_parts[1]
-
-        return None
-
-    def _map_vuln_type(self, type_str: str) -> VulnerabilityType:
-        """Map AI vulnerability types to project enum"""
-        type_str = type_str.lower() if type_str else ""
-        if 'sql' in type_str:
-            return VulnerabilityType.SQL_INJECTION
-        if 'xss' in type_str:
-            return VulnerabilityType.XSS_STORED
-        if 'traversal' in type_str or 'path' in type_str:
-            return VulnerabilityType.PATH_TRAVERSAL
-        if 'data' in type_str or 'sensitive' in type_str:
-            return VulnerabilityType.SENSITIVE_DATA_EXPOSURE
-        return VulnerabilityType.OTHER
-
-    def _map_severity(self, sev_str: str) -> Severity:
-        """Map string severity to Severity enum"""
+    def _map_severity(self, sev_str: str) -> str:
+        if not sev_str: return Severity.MEDIUM
         mapping = {
             'critical': Severity.CRITICAL,
             'high': Severity.HIGH,
@@ -1640,24 +1228,195 @@ If no vulnerabilities are found, return {"vulnerabilities": []}."""
         }
         return mapping.get(sev_str.lower(), Severity.MEDIUM)
 
-    def _log_scan_statistics(self, owner: str, repo: str) -> None:
-        """Log scanning statistics"""
-        cache_hit_rate = 0
-        if self.stats['cache_hits'] + self.stats['cache_misses'] > 0:
-            cache_hit_rate = (self.stats['cache_hits'] /
-                              (self.stats['cache_hits'] + self.stats['cache_misses'])) * 100
+    async def _fetch_file_content(
+            self,
+            owner: str,
+            repo: str,
+            file_path: str,
+            branch: str
+    ) -> Optional[str]:
+        """Fetch raw file content from GitHub."""
+        url = f"https://raw.githubusercontent.com/{owner}/{repo}/{branch}/{file_path}"
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.get(url, timeout=GithubAgentConfig.DEFAULT_TIMEOUT)
+                if response.status_code == 200:
+                    return response.text
+                return None
+        except Exception as e:
+            logger.error(f"Failed to fetch {file_path}: {e}")
+            return None
 
-        logger.info(f"""
-========== GitHub Scan Statistics ==========
-Repository: {owner}/{repo}
-Files Scanned: {self.stats['files_scanned']}
-Secrets Found: {self.stats['secrets_found']}
-API Calls: {self.stats['api_calls']}
-Cache Hits: {self.stats['cache_hits']}
-Cache Misses: {self.stats['cache_misses']}
-Cache Hit Rate: {cache_hit_rate:.1f}%
-=============================================
-        """.strip())
+    async def _check_dependency_vulnerabilities(
+            self,
+            dependencies: List[Any], # List[ParsedDependency]
+            ecosystem: str,
+            owner: str,
+            repo: str,
+            branch: str,
+            file_path: str
+    ) -> List[AgentResult]:
+        """Check against OSV API."""
+        results = []
+        batch_size = 50
+        
+        for i in range(0, len(dependencies), batch_size):
+            batch = dependencies[i:i + batch_size]
+            queries = []
+            
+            for dep in batch:
+                osv_eco = self._map_ecosystem_to_osv(ecosystem)
+                if not osv_eco: continue
+                
+                # Handle ParsedDependency objects
+                name = dep.name if hasattr(dep, 'name') else dep.get('name')
+                version = dep.version if hasattr(dep, 'version') else dep.get('version')
+                
+                if not name or not version: continue
+
+                queries.append({
+                    "package": {
+                        "name": name,
+                        "ecosystem": osv_eco
+                    },
+                    "version": version
+                })
+            
+            if not queries: continue
+
+            logger.debug(f"OSV Query Batch Size: {len(queries)}")
+
+            try:
+                async with httpx.AsyncClient() as client:
+                    resp = await client.post(
+                        GithubAgentConfig.OSV_API_URL, 
+                        json={"queries": queries}, 
+                        timeout=GithubAgentConfig.DEFAULT_TIMEOUT
+                    )
+                    
+                    logger.debug(f"OSV Response Code: {resp.status_code}")
+                    if resp.status_code == 200:
+                        data = resp.json()
+                        for idx, res in enumerate(data.get("results", [])):
+                            if "vulns" in res:
+                                dep = batch[idx]
+                                dep_name = dep.name if hasattr(dep, 'name') else dep.get('name')
+                                dep_ver = dep.version if hasattr(dep, 'version') else dep.get('version')
+                                
+                                for vuln in res["vulns"]:
+                                    results.append(self._create_dependency_finding(
+                                        vuln, dep_name, dep_ver, owner, repo, branch, file_path
+                                    ))
+            except Exception as e:
+                logger.error(f"OSV check failed: {e}")
+                
+        return results
+
+    def _map_ecosystem_to_osv(self, eco: str) -> Optional[str]:
+        mapping = {
+            'npm': 'npm',
+            'pip': 'PyPI',
+            'go': 'Go',
+            'maven': 'Maven',
+            'gem': 'RubyGems',
+            'cargo': 'Crates.io',
+            'nuget': 'NuGet',
+            'composer': 'Packagist'
+        }
+        return mapping.get(eco)
+
+    def _create_dependency_finding(self, vuln: Dict, dep_name: str, dep_version: str, owner: str, repo: str, branch: str, file_path: str) -> AgentResult:
+        summary = vuln.get('summary', 'Unknown vulnerability')
+        details = vuln.get('details', '')
+        
+        return self.create_result(
+            vulnerability_type=VulnerabilityType.VULNERABLE_DEPENDENCY,
+            is_vulnerable=True,
+            severity=Severity.HIGH, 
+            confidence=100.0,
+            url=f"https://github.com/{owner}/{repo}/blob/{branch}/{file_path}",
+            title=f"Vulnerable Dependency: {dep_name} ({summary})",
+            description=f"Package {dep_name}@{dep_version} is vulnerable.\n{details}",
+            evidence=f"Installed: {dep_version}\nAdvisory: {vuln.get('id')}",
+            remediation="Update to a patched version.",
+            owasp_category="A06:2021 – Vulnerable and Outdated Components",
+            cwe_id="CWE-1395",
+            vulnerability_context=self._build_github_context(
+                file_path, "vulnerable_dependency",
+                summary, "osv_database",
+                confidentiality_impact="High", metric_impact=8.0, data_exposed=[dep_name]
+            )
+        )
+
+    async def _scan_dependencies(
+            self,
+            owner: str,
+            repo: str,
+            branch: str,
+            files: List[Dict[str, Any]]
+    ) -> List[AgentResult]:
+        """Scan dependency files for known vulnerabilities using OSV"""
+        results = []
+        
+        # Identify dependency files
+        dep_files = []
+        for f in files:
+            path = f['path']
+            filename = path.split('/')[-1]
+            if filename in DependencyFile.PACKAGE_FILES:
+                dep_files.append(f)
+                
+        if not dep_files:
+            return []
+
+        logger.info(f"Found {len(dep_files)} dependency files to scan")
+        
+        ecosystem_stats = defaultdict(int)
+
+        for f in dep_files:
+            file_path = f['path']
+            ecosystem = DependencyFile.PACKAGE_FILES.get(file_path.split('/')[-1])
+            
+            try:
+                # Fetch content
+                content = await self._fetch_file_content(owner, repo, file_path, branch)
+                if not content:
+                    continue
+                    
+                # Parse dependencies
+                # We need to use valid parsing logic. 
+                # Assuming DependencyParser exists and works.
+                from .dependency_parser import DependencyParser
+                dependencies = DependencyParser.parse(content, ecosystem, file_path)
+                
+                ecosystem_stats[ecosystem] += len(dependencies)
+                
+                # Check for vulnerabilities
+                vuln_results = await self._check_dependency_vulnerabilities(dependencies, ecosystem, owner, repo, branch, file_path)
+                results.extend(vuln_results)
+
+            except Exception as e:
+                logger.error(f"Error scanning dependency file {file_path}: {e}")
+
+        # Log ecosystem statistics
+        if ecosystem_stats:
+            logger.info("Dependency scan statistics by ecosystem:")
+            for eco, count in ecosystem_stats.items():
+                logger.info(f"  {eco}: {count} dependencies")
+
+        return results
+
+    def _log_scan_statistics(self, owner: str, repo: str) -> None:
+        # Log scanning statistics
+        cache_hit_rate = 0.0
+        total_cache_ops = self.stats['cache_hits'] + self.stats['cache_misses']
+        if total_cache_ops > 0:
+            cache_hit_rate = (self.stats['cache_hits'] / total_cache_ops) * 100
+
+        logger.info(f"GitHub Scan Stats for {owner}/{repo}: "
+                   f"Files={self.stats['files_scanned']}, "
+                   f"Secrets={self.stats['secrets_found']}, "
+                   f"Cache Hit Rate={cache_hit_rate:.1f}%")
 
     def generate_sbom(
             self,
@@ -1665,13 +1424,8 @@ Cache Hit Rate: {cache_hit_rate:.1f}%
             repo: str,
             all_dependencies: List[ParsedDependency]
     ) -> Dict[str, Any]:
-        """
-        Generate a Software Bill of Materials (SBOM) for the repository.
-        Useful for compliance and supply chain security.
-
-        Returns:
-            SBOM in CycloneDX-like format
-        """
+        # Generate a Software Bill of Materials (SBOM) for the repository.
+        # Useful for compliance and supply chain security.
         from datetime import datetime
 
         # Group by ecosystem
@@ -1692,7 +1446,7 @@ Cache Hit Rate: {cache_hit_rate:.1f}%
             'specVersion': '1.4',
             'version': 1,
             'metadata': {
-                'timestamp': datetime.now().isoformat(),
+                'timestamp': datetime.now(timezone.utc).isoformat(),
                 'component': {
                     'type': 'application',
                     'name': f"{owner}/{repo}",

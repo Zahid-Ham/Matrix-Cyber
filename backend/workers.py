@@ -3,7 +3,7 @@ Background workers for handling long-running tasks.
 """
 import asyncio
 from typing import Optional, List
-from datetime import datetime, timedelta
+from datetime import datetime, timezone, timedelta
 from sqlalchemy import select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -67,7 +67,7 @@ async def _run_scan_async(scan_id: int):
             if scan:
                 scan.status = ScanStatus.FAILED
                 scan.error_message = str(e)
-                scan.completed_at = datetime.utcnow()
+                scan.completed_at = datetime.now(timezone.utc)
                 await db.commit()
 
 async def _apply_cached_results(db: AsyncSession, current_scan: Scan, cached_scan: Scan):
@@ -77,8 +77,8 @@ async def _apply_cached_results(db: AsyncSession, current_scan: Scan, cached_sca
     # Update status
     current_scan.status = ScanStatus.COMPLETED
     current_scan.progress = 100
-    current_scan.started_at = datetime.utcnow()
-    current_scan.completed_at = datetime.utcnow()
+    current_scan.started_at = datetime.now(timezone.utc)
+    current_scan.completed_at = datetime.now(timezone.utc)
     current_scan.notes = f"Cached result from scan {cached_scan.id}"
     
     # Copy vulnerabilities
@@ -146,7 +146,7 @@ async def _execute_orchestrator(db: AsyncSession, scan: Scan):
     # Scan logic
     try:
         scan.status = ScanStatus.RUNNING
-        scan.started_at = datetime.utcnow()
+        scan.started_at = datetime.now(timezone.utc)
         await db.commit()
         
         # Run orchestrator
@@ -200,12 +200,15 @@ async def _execute_orchestrator(db: AsyncSession, scan: Scan):
         scan.info_count = sum(1 for r in results if r.severity.value == 'info')
         
         scan.status = ScanStatus.COMPLETED
-        scan.completed_at = datetime.utcnow()
+        scan.completed_at = datetime.now(timezone.utc)
         scan.progress = 100
         await db.commit()
         
     except Exception as e:
-        print(f"[Worker] Orchestrator execution failed: {e}")
+        import traceback
+        print(f"[Worker] Orchestrator execution failed: {type(e).__name__}: {e}")
+        traceback.print_exc()
+        await db.rollback()
         raise e
     finally:
         await orchestrator.cleanup()

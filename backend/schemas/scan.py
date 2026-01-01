@@ -16,6 +16,21 @@ class ScanCreate(BaseModel):
         default=["sql_injection", "xss", "auth", "api_security"],
         description="List of agent types to enable"
     )
+    
+    # Advanced options (Default: OFF for legal/ethical compliance)
+    enable_waf_evasion: bool = Field(
+        default=False,
+        description=(
+            "Enable advanced WAF evasion techniques. "
+            "WARNING: This may trigger security alerts on target systems. "
+            "Only use for authorized penetration testing with explicit permission."
+        )
+    )
+    waf_evasion_consent: bool = Field(
+        default=False,
+        description="User acknowledges the risks of WAF evasion testing"
+    )
+
 
 
 class ScanResponse(BaseModel):
@@ -37,6 +52,10 @@ class ScanResponse(BaseModel):
     
     technology_stack: List[str] = []
     agents_enabled: List[str] = []
+    scanned_files: List[str] = []
+    
+    # Advanced testing options
+    enable_waf_evasion: bool = False
     
     error_message: Optional[str] = None
     
@@ -46,6 +65,7 @@ class ScanResponse(BaseModel):
     
     class Config:
         from_attributes = True
+
 
 
 class ScanUpdate(BaseModel):

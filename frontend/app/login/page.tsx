@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { Mail, Lock, ArrowRight, Loader2, AlertCircle, ShieldCheck, Cpu, Fingerprint } from 'lucide-react';
+import { Mail, Lock, ArrowRight, Loader2, AlertCircle, ShieldCheck, Cpu, Fingerprint, Eye, EyeOff } from 'lucide-react';
 import { SpiderWeb } from '../../components/SpiderWeb';
 import { useAuth } from '../../context/AuthContext';
 import { useSearchParams } from 'next/navigation';
@@ -12,6 +12,7 @@ export default function LoginPage() {
     const searchParams = useSearchParams();
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
+    const [showPassword, setShowPassword] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [alertMessage, setAlertMessage] = useState<string | null>(null);
 
@@ -102,12 +103,20 @@ export default function LoginPage() {
                                     <div className="relative group">
                                         <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted transition-colors group-focus-within:text-accent-primary" />
                                         <input
-                                            type="password"
+                                            type={showPassword ? 'text' : 'password'}
                                             value={password}
                                             onChange={(e) => setPassword(e.target.value)}
                                             placeholder="Master Key"
-                                            className="w-full pl-10 pr-4 py-3 bg-warm-50/30 border border-warm-200/60 rounded-xl focus:ring-2 focus:ring-accent-primary/20 focus:border-accent-primary transition-all outline-none text-text-primary text-sm font-medium placeholder:text-text-muted/50"
+                                            className="w-full pl-10 pr-12 py-3 bg-warm-50/30 border border-warm-200/60 rounded-xl focus:ring-2 focus:ring-accent-primary/20 focus:border-accent-primary transition-all outline-none text-text-primary text-sm font-medium placeholder:text-text-muted/50"
                                         />
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowPassword(!showPassword)}
+                                            className="absolute right-4 top-1/2 -translate-y-1/2 text-text-muted hover:text-accent-primary transition-colors p-1"
+                                            title={showPassword ? "Hide password" : "Show password"}
+                                        >
+                                            {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                                        </button>
                                     </div>
                                 </div>
                             </div>

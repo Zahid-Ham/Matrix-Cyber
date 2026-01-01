@@ -7,6 +7,7 @@ Supports:
 - Markdown (documentation, GitHub issues)
 """
 import json
+import html
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from enum import Enum
@@ -15,6 +16,7 @@ from typing import Any, Dict, List, Optional
 
 from agents.base_agent import AgentResult
 from core.logger import get_logger
+from core.input_validation import validate_file_path
 from core.report_templates import (
     FINDING_TEMPLATE,
     HTML_REPORT_TEMPLATE,
@@ -268,30 +270,33 @@ class ReportGenerator:
                 
                 parameter_row = ""
                 if finding.parameter:
+                    # Escape parameter
+                    safe_param = html.escape(str(finding.parameter))
                     parameter_row = f"""
                     <div class="info-row">
                         <span class="info-label">Parameter:</span>
-                        <span class="info-value"><code>{finding.parameter}</code></span>
+                        <span class="info-value"><code>{safe_param}</code></span>
                     </div>
                     """
                 
+                # Escape all fields that might contain user input
                 findings_html += FINDING_TEMPLATE.format(
                     severity_class=severity.value,
                     severity_label=severity.value.upper(),
-                    title=finding.title,
-                    method=finding.method,
-                    url=finding.url,
+                    title=html.escape(finding.title),
+                    method=html.escape(finding.method or "N/A"),
+                    url=html.escape(finding.url),
                     parameter_row=parameter_row,
                     cvss_score=cvss.base_score,
                     cvss_rating=cvss.severity_rating,
                     cvss_vector=cvss.to_vector_string(),
                     confidence=finding.confidence,
-                    description=finding.description,
-                    evidence=finding.evidence,
-                    remediation=finding.remediation,
-                    owasp_category=finding.owasp_category,
-                    cwe_id=finding.cwe_id,
-                    agent_name=finding.agent_name
+                    description=html.escape(finding.description),
+                    evidence=html.escape(str(finding.evidence)),
+                    remediation=html.escape(str(finding.remediation)),
+                    owasp_category=html.escape(finding.owasp_category or "N/A"),
+                    cwe_id=html.escape(finding.cwe_id or "N/A"),
+                    agent_name=html.escape(finding.agent_name)
                 )
         
         # Format scan duration if available
@@ -300,18 +305,21 @@ class ReportGenerator:
             scan_duration_html = f"<p><strong>Duration:</strong> {scan_metadata['duration']:.2f}s</p>"
         
         # Generate final HTML
-        html = HTML_REPORT_TEMPLATE.format(
-            target_url=scan_metadata.get('target_url', 'Unknown'),
+        # Target URL also needs escaping
+        safe_target = html.escape(scan_metadata.get('target_url', 'Unknown'))
+        
+        final_html = HTML_REPORT_TEMPLATE.format(
+            target_url=safe_target,
             generated_at=self.report_metadata['generated_at'],
             generator=self.report_metadata['generator'],
             scan_duration=scan_duration_html,
-            summary_text=summary['summary_text'],
+            summary_text=html.escape(summary['summary_text']),
             severity_cards=severity_cards_html,
             findings_content=findings_html if findings_html else "<p>No vulnerabilities detected.</p>"
         )
         
         logger.info("HTML report generated successfully")
-        return html
+        return final_html
     
     def _generate_markdown(
         self,
@@ -635,12 +643,13 @@ def generate_report(
     report = generator.generate_report(results, scan_metadata, format)
     
     if output_file:
-        output_path = Path(output_file)
+        output_path = validate_file_path(output_file)
+        
         output_path.parent.mkdir(parents=True, exist_ok=True)
         output_path.write_text(report, encoding='utf-8')
         logger.info(
-            f"Report saved to {output_file}",
-            extra={"format": format.value, "file": output_file}
+            f"Report saved to {output_path}",
+            extra={"format": format.value, "file": str(output_path)}
         )
     
     return report

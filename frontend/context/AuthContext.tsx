@@ -3,17 +3,12 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 
-interface User {
-    id: number;
-    email: string;
-    username: string;
-    full_name: string | null;
-    company: string | null;
-}
+import { api, User } from '../lib/api'; // Import api client and User type
+
+
 
 interface AuthContextType {
     user: User | null;
-    token: string | null;
     isAuthenticated: boolean;
     isLoading: boolean;
     login: (email: string, password: string) => Promise<void>;
@@ -24,11 +19,10 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
 export function AuthProvider({ children }: { children: ReactNode }) {
     const [user, setUser] = useState<User | null>(null);
-    const [token, setToken] = useState<string | null>(null);
+    const isAuthenticated = !!user;
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const router = useRouter();
@@ -37,53 +31,40 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     useEffect(() => {
         setMounted(true);
-        
-        // Check for stored token on mount
-        try {
-            const storedToken = localStorage.getItem('matrix_token');
-            const storedUser = localStorage.getItem('matrix_user');
 
-            console.log('[Auth] Initializing...', { hasToken: !!storedToken, hasUser: !!storedUser });
+        // Check for active session via API (cookies)
+        const initAuth = async () => {
+            console.log('[Auth] Initializing session...');
+            try {
+                // First, ensure we have a CSRF token
+                await api.ensureCsrf();
 
-            if (storedToken && storedUser) {
-                const parsedUser = JSON.parse(storedUser);
-                setToken(storedToken);
-                setUser(parsedUser);
-                console.log('[Auth] Session restored', parsedUser.username);
+                const user = await api.getCurrentUser();
+                setUser(user);
+                console.log('[Auth] Session restored', user.username);
+            } catch (e) {
+                console.log('[Auth] No active session');
+                setUser(null);
+            } finally {
+                setIsLoading(false);
             }
-        } catch (e) {
-            console.error('[Auth] Failed to restore session', e);
-            localStorage.removeItem('matrix_token');
-            localStorage.removeItem('matrix_user');
-        } finally {
-            // Always set loading to false after checking
+        };
+
+        if (isAuthenticated) {
+            // Already explicitly authenticated (e.g. just logged in)
             setIsLoading(false);
-            console.log('[Auth] Loading complete');
+        } else {
+            initAuth();
         }
-    }, []);
+    }, [isAuthenticated]);
 
     const login = async (email: string, password: string) => {
         setError(null);
         setIsLoading(true);
         try {
-            const response = await fetch(`${API_BASE_URL}/api/auth/login`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ email, password }),
-            });
-
-            const data = await response.json();
-
-            if (!response.ok) {
-                throw new Error(data.detail || 'Login failed');
-            }
-
-            const { access_token, user: userData } = data;
-            setToken(access_token);
-            setUser(userData);
-            localStorage.setItem('matrix_token', access_token);
-            localStorage.setItem('matrix_user', JSON.stringify(userData));
-
+            const data = await api.login(email, password);
+            setUser(data.user);
+            // No localStorage set
             router.push('/hub');
         } catch (err: any) {
             setError(err.message);
@@ -97,24 +78,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setError(null);
         setIsLoading(true);
         try {
-            const response = await fetch(`${API_BASE_URL}/api/auth/register`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ email, username, password, full_name: fullName, company }),
-            });
-
-            const data = await response.json();
-
-            if (!response.ok) {
-                throw new Error(data.detail || 'Registration failed');
-            }
-
-            const { access_token, user: userData } = data;
-            setToken(access_token);
-            setUser(userData);
-            localStorage.setItem('matrix_token', access_token);
-            localStorage.setItem('matrix_user', JSON.stringify(userData));
-
+            const data = await api.register({ email, username, password, full_name: fullName, company });
+            setUser(data.user);
             router.push('/hub');
         } catch (err: any) {
             setError(err.message);
@@ -124,19 +89,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
     };
 
-    const logout = () => {
-        setToken(null);
+    const logout = async () => {
+        try {
+            await api.logout();
+        } catch (e) {
+            console.error('Logout failed', e);
+        }
         setUser(null);
-        localStorage.removeItem('matrix_token');
-        localStorage.removeItem('matrix_user');
         router.push('/');
     };
 
     return (
         <AuthContext.Provider value={{
             user,
-            token,
-            isAuthenticated: !!token,
+
+            isAuthenticated: !!user,
             isLoading,
             login,
             register,

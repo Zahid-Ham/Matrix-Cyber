@@ -2,14 +2,18 @@
 Scan Service - Orchestrates the complete scanning workflow.
 """
 import asyncio
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from models.scan import Scan, ScanStatus
-from models.vulnerability import Vulnerability, Severity, VulnerabilityType
+from models.vulnerability import (
+    Vulnerability, Severity, VulnerabilityType,
+    CVSSAttackVector, CVSSAttackComplexity, CVSSPrivilegesRequired,
+    CVSSUserInteraction, CVSSScope, CVSSImpact
+)
 from agents.orchestrator import AgentOrchestrator
 from agents.sql_injection_agent import SQLInjectionAgent
 from agents.xss_agent import XSSAgent
@@ -75,7 +79,7 @@ class ScanService:
         try:
             # Update status to running
             scan.status = ScanStatus.RUNNING
-            scan.started_at = datetime.utcnow()
+            scan.started_at = datetime.now(timezone.utc)
             scan.progress = 0
             await db.commit()
             
@@ -135,7 +139,7 @@ class ScanService:
             
             # Update scan with results
             scan.status = ScanStatus.COMPLETED
-            scan.completed_at = datetime.utcnow()
+            scan.completed_at = datetime.now(timezone.utc)
             scan.progress = 100
             scan.total_vulnerabilities = sum(vuln_counts.values())
             scan.critical_count = vuln_counts["critical"]
@@ -152,7 +156,7 @@ class ScanService:
             print(f"[ScanService] Scan {scan_id} failed: {e}")
             scan.status = ScanStatus.FAILED
             scan.error_message = str(e)
-            scan.completed_at = datetime.utcnow()
+            scan.completed_at = datetime.now(timezone.utc)
             await db.commit()
             raise
         
@@ -180,6 +184,9 @@ class ScanService:
             vulnerability_type=result.vulnerability_type,
             severity=result.severity,
             cvss_score=result.cvss_score,
+            cvss_vector=result.cvss_vector,
+            cvss_metrics_json=result.cvss_metrics,
+            cvss_justification=result.cvss_justification,
             url=result.url,
             parameter=result.parameter,
             method=result.method,
@@ -197,10 +204,36 @@ class ScanService:
             cwe_id=result.cwe_id,
             detected_by=result.agent_name,
             detected_at=result.detected_at,
+            likelihood=result.likelihood,
+            impact=result.impact,
+            exploitability_rationale=result.exploitability_rationale,
+            detection_method=result.detection_method,
+            detection_confidence=result.detection_confidence,
+            exploit_confidence=result.exploit_confidence,
+            action_required=result.action_required,
+            scope_impact=result.scope_impact
         )
         
-        # Calculate proper CVSS v3.1 score
-        vuln.set_cvss_from_severity()
+        # Determine CVSS metrics
+        if result.cvss_vector and result.cvss_metrics:
+            # use calculated metrics
+            try:
+                metrics = result.cvss_metrics
+                vuln.cvss_attack_vector = CVSSAttackVector(metrics.get("AV"))
+                vuln.cvss_attack_complexity = CVSSAttackComplexity(metrics.get("AC"))
+                vuln.cvss_privileges_required = CVSSPrivilegesRequired(metrics.get("PR"))
+                vuln.cvss_user_interaction = CVSSUserInteraction(metrics.get("UI"))
+                vuln.cvss_scope = CVSSScope(metrics.get("S"))
+                vuln.cvss_confidentiality = CVSSImpact(metrics.get("C"))
+                vuln.cvss_integrity = CVSSImpact(metrics.get("I"))
+                vuln.cvss_availability = CVSSImpact(metrics.get("A"))
+            except ValueError as e:
+                print(f"[ScanService] Error mapping CVSS metrics: {e}")
+                # Fallback
+                vuln.set_cvss_from_severity()
+        else:
+            # Fallback to legacy calculation
+            vuln.set_cvss_from_severity()
         
         return vuln
 

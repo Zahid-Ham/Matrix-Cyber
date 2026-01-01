@@ -1,0 +1,36 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: matrix-postgres
+    environment:
+      POSTGRES_USER: matrix
+      POSTGRES_PASSWORD: matrix_secure_pass
+      POSTGRES_DB: matrix
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U matrix" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+  # Redis is commented out since it's running locally
+  # Uncomment if you want to use containerized Redis
+  # redis:
+  #   image: redis:7-alpine
+  #   container_name: matrix-redis
+  #   ports:
+  #     - "6379:6379"
+  #   volumes:
+  #     - redis_data:/data
+  #   healthcheck:
+  #     test: ["CMD", "redis-cli", "ping"]
+  #     interval: 5s
+  #     timeout: 5s
+  #     retries: 5
+
+volumes:
+  postgres_data:
+    # redis_data:
+

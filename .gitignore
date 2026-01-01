@@ -7,6 +7,8 @@ __pycache__/
 # Environment variables
 .env
 backend/.env
+.env.local
+.env.*
 
 # Node
 node_modules/
@@ -19,3 +21,13 @@ frontend/.next/
 # OS / Editor junk
 .DS_Store
 Thumbs.db
+
+# Testing / coverage
+.coverage
+htmlcov/
+.pytest_cache/
+
+
+# Logs
+*.log
+logs/

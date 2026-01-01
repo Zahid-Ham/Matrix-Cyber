@@ -1,0 +1,206 @@
+{
+    "sqli_unauthenticated_error_based": {
+        "vulnerability_type": "sql_injection",
+        "detection_method": "error_based",
+        "requires_authentication": false,
+        "authentication_level": "none",
+        "network_accessible": true,
+        "requires_user_interaction": false,
+        "escapes_security_boundary": false,
+        "data_exposed": [
+            "database"
+        ],
+        "expected_cvss": 9.8,
+        "expected_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
+        "description": "Unauthenticated error-based SQL injection"
+    },
+    "sqli_authenticated_time_based": {
+        "vulnerability_type": "sql_injection",
+        "detection_method": "time_blind",
+        "requires_authentication": true,
+        "authentication_level": "low",
+        "network_accessible": true,
+        "requires_user_interaction": false,
+        "escapes_security_boundary": false,
+        "data_exposed": [
+            "database"
+        ],
+        "expected_cvss": 8.1,
+        "expected_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:N",
+        "description": "Authenticated time-based SQL injection (user account)"
+    },
+    "sqli_xp_cmdshell_scope_changed": {
+        "vulnerability_type": "sql_injection",
+        "detection_method": "error_based",
+        "requires_authentication": false,
+        "authentication_level": "none",
+        "network_accessible": true,
+        "requires_user_interaction": false,
+        "escapes_security_boundary": true,
+        "can_execute_os_commands": true,
+        "data_exposed": [
+            "database",
+            "filesystem",
+            "system_level_access"
+        ],
+        "expected_cvss": 10.0,
+        "expected_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:H/A:H",
+        "description": "SQL injection with xp_cmdshell (OS command execution)"
+    },
+    "sqli_admin_only": {
+        "vulnerability_type": "sql_injection",
+        "detection_method": "error_based",
+        "requires_authentication": true,
+        "authentication_level": "high",
+        "network_accessible": true,
+        "requires_user_interaction": false,
+        "escapes_security_boundary": false,
+        "data_exposed": [
+            "database"
+        ],
+        "expected_cvss": 7.2,
+        "expected_vector": "CVSS:3.1/AV:N/AC:L/PR:H/UI:N/S:U/C:H/I:H/A:H",
+        "description": "SQL injection on admin-only endpoint"
+    },
+    "xss_reflected_unauthenticated": {
+        "vulnerability_type": "xss",
+        "detection_method": "reflected",
+        "requires_authentication": false,
+        "authentication_level": "none",
+        "network_accessible": true,
+        "requires_user_interaction": true,
+        "escapes_security_boundary": true,
+        "affects_other_users": false,
+        "expected_cvss": 6.1,
+        "expected_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:C/C:L/I:L/A:N",
+        "description": "Reflected XSS (unauthenticated)"
+    },
+    "xss_stored_affects_all_users": {
+        "vulnerability_type": "xss",
+        "detection_method": "stored",
+        "requires_authentication": true,
+        "authentication_level": "low",
+        "network_accessible": true,
+        "requires_user_interaction": true,
+        "escapes_security_boundary": true,
+        "affects_other_users": true,
+        "expected_cvss": 7.1,
+        "expected_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:R/S:C/C:L/I:L/A:L",
+        "description": "Stored XSS affecting all users"
+    },
+    "command_injection_unauthenticated": {
+        "vulnerability_type": "os_command_injection",
+        "detection_method": "error_based",
+        "requires_authentication": false,
+        "authentication_level": "none",
+        "network_accessible": true,
+        "requires_user_interaction": false,
+        "escapes_security_boundary": true,
+        "can_execute_os_commands": true,
+        "data_exposed": [
+            "system_level_access",
+            "all_data"
+        ],
+        "expected_cvss": 10.0,
+        "expected_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:H/A:H",
+        "description": "Command injection (unauthenticated) - ALWAYS Scope:Changed"
+    },
+    "command_injection_authenticated": {
+        "vulnerability_type": "os_command_injection",
+        "detection_method": "time_based",
+        "requires_authentication": true,
+        "authentication_level": "low",
+        "network_accessible": true,
+        "requires_user_interaction": false,
+        "escapes_security_boundary": true,
+        "can_execute_os_commands": true,
+        "data_exposed": [
+            "system_level_access",
+            "all_data"
+        ],
+        "expected_cvss": 9.9,
+        "expected_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:C/C:H/I:H/A:H",
+        "description": "Command injection (authenticated) - ALWAYS Scope:Changed"
+    },
+    "ssrf_aws_metadata_unauthenticated": {
+        "vulnerability_type": "ssrf",
+        "detection_method": "out_of_band",
+        "requires_authentication": false,
+        "authentication_level": "none",
+        "network_accessible": true,
+        "requires_user_interaction": false,
+        "escapes_security_boundary": true,
+        "can_access_cloud_metadata": true,
+        "can_access_internal_network": true,
+        "data_exposed": [
+            "cloud_credentials",
+            "internal_services"
+        ],
+        "expected_cvss": 9.6,
+        "expected_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:H/A:N",
+        "description": "SSRF to AWS metadata (unauthenticated)"
+    },
+    "ssrf_internal_network": {
+        "vulnerability_type": "ssrf",
+        "detection_method": "response_analysis",
+        "requires_authentication": true,
+        "authentication_level": "low",
+        "network_accessible": true,
+        "requires_user_interaction": false,
+        "escapes_security_boundary": true,
+        "can_access_internal_network": true,
+        "data_exposed": [
+            "internal_services"
+        ],
+        "expected_cvss": 7.7,
+        "expected_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:C/C:H/I:N/A:N",
+        "description": "SSRF to internal network (authenticated)"
+    },
+    "csrf_missing_protection": {
+        "vulnerability_type": "csrf",
+        "detection_method": "missing_csrf_protection",
+        "requires_authentication": true,
+        "authentication_level": "low",
+        "network_accessible": true,
+        "requires_user_interaction": true,
+        "escapes_security_boundary": false,
+        "data_modifiable": [
+            "user_actions",
+            "session_data"
+        ],
+        "expected_cvss": 6.5,
+        "expected_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:N/I:H/A:N",
+        "description": "Missing CSRF protection on state-changing endpoint"
+    },
+    "auth_default_credentials": {
+        "vulnerability_type": "broken_authentication",
+        "detection_method": "default_credentials",
+        "requires_authentication": false,
+        "authentication_level": "none",
+        "network_accessible": true,
+        "requires_user_interaction": false,
+        "escapes_security_boundary": false,
+        "data_exposed": [
+            "user_data",
+            "credentials"
+        ],
+        "expected_cvss": 9.8,
+        "expected_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
+        "description": "Default admin credentials (no auth barrier)"
+    },
+    "idor_unauthenticated": {
+        "vulnerability_type": "idor",
+        "detection_method": "parameter_manipulation",
+        "requires_authentication": false,
+        "authentication_level": "none",
+        "network_accessible": true,
+        "requires_user_interaction": false,
+        "escapes_security_boundary": false,
+        "data_exposed": [
+            "user_data"
+        ],
+        "expected_cvss": 7.5,
+        "expected_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N",
+        "description": "IDOR allowing unauthenticated access to user data"
+    }
+}

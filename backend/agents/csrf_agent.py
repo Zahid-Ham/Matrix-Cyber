@@ -22,6 +22,7 @@ from enum import Enum
 
 from .base_agent import BaseSecurityAgent, AgentResult
 from models.vulnerability import Severity, VulnerabilityType
+from scoring import VulnerabilityContext, ConfidenceMethod
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -183,7 +184,47 @@ class CSRFAgent(BaseSecurityAgent):
             results.extend(reuse_results)
 
         logger.info(f"CSRF scan completed. Found {len(results)} vulnerabilities")
+        logger.info(f"CSRF scan completed. Found {len(results)} vulnerabilities")
         return results
+
+    def _build_csrf_context(
+            self,
+            url: str,
+            method: str,
+            endpoint: Dict[str, Any],
+            description: str,
+            detection_method: str = "csrf_probe"
+    ) -> VulnerabilityContext:
+        """Build VulnerabilityContext for CSRF."""
+        data_modifiable = ["account_settings", "user_profile", "user_actions"]
+        exploitation_difficulty = "moderate"
+        
+        # Misconfigurations are less direct than found bypasses
+        if detection_method in ["missing_samesite", "samesite_none", "cors_null_origin"]:
+            data_modifiable = ["user_actions"]
+            exploitation_difficulty = "difficult"
+            
+        return VulnerabilityContext(
+            vulnerability_type="csrf",
+            detection_method=detection_method,
+            endpoint=url,
+            parameter="csrf_token",
+            http_method=method,
+            # CSRF always requires user interaction (victim must visit site)
+            requires_user_interaction=True,
+            # Attacker does not need to be authenticated to initiate the attack
+            requires_authentication=False,
+            authentication_level="none",
+            escapes_security_boundary=False,
+            payload_succeeded=True, 
+            service_disruption_possible=False,
+            # Impact is usually integrity (data modification)
+            data_modifiable=data_modifiable,
+            exploitation_difficulty=exploitation_difficulty,
+            additional_context={
+                "description": description
+            }
+        )
 
     def _filter_state_changing_endpoints(
             self,
@@ -523,7 +564,7 @@ class CSRFAgent(BaseSecurityAgent):
                     vulnerability_type=VulnerabilityType.CSRF,
                     is_vulnerable=True,
                     severity=Severity.HIGH,
-                    confidence=90,
+                    confidence=self.calculate_confidence(ConfidenceMethod.LOGIC_MATCH),
                     url=url,
                     method=method,
                     title=f"Missing CSRF Protection on {method} Endpoint",
@@ -533,6 +574,11 @@ class CSRFAgent(BaseSecurityAgent):
                         "unauthorized requests on behalf of authenticated users who visit the page."
                     ),
                     evidence="\n".join(evidence_parts),
+                    vulnerability_context=self._build_csrf_context(
+                        url, method, endpoint,
+                        "Missing CSRF Protection",
+                        "missing_csrf_protection"
+                    ),
                     likelihood=8.0,
                     impact=8.0,
                     exploitability_rationale=(
@@ -639,7 +685,12 @@ class CSRFAgent(BaseSecurityAgent):
                             exploitability_rationale="Token validation can be bypassed",
                             remediation="Fix token validation logic",
                             owasp_category="A01:2021 – Broken Access Control",
-                            cwe_id="CWE-352"
+                            cwe_id="CWE-352",
+                            vulnerability_context=self._build_csrf_context(
+                                url, method, endpoint,
+                                f"CSRF Bypass: {technique_name}",
+                                f"csrf_bypass_{technique_name}"
+                            )
                         )
                     )
                     break
@@ -694,7 +745,12 @@ class CSRFAgent(BaseSecurityAgent):
                 exploitability_rationale="Weak token may enable prediction attacks",
                 remediation="Use cryptographically secure random tokens (min 128 bits)",
                 owasp_category="A02:2021 – Cryptographic Failures",
-                cwe_id="CWE-330"
+                cwe_id="CWE-330",
+                vulnerability_context=self._build_csrf_context(
+                    url, method, {},
+                    "Weak CSRF Token",
+                    "weak_csrf_token"
+                )
             )
 
         return None
@@ -768,7 +824,12 @@ class CSRFAgent(BaseSecurityAgent):
                     exploitability_rationale="Exploitable if attacker can set cookies",
                     remediation="Use signed double-submit cookies with HMAC",
                     owasp_category="A01:2021 – Broken Access Control",
-                    cwe_id="CWE-352"
+                    cwe_id="CWE-352",
+                    vulnerability_context=self._build_csrf_context(
+                        url, method, endpoint,
+                        "Weak Double-Submit Cookie",
+                        "weak_double_submit"
+                    )
                 )
 
         except Exception as e:
@@ -816,7 +877,12 @@ class CSRFAgent(BaseSecurityAgent):
                         exploitability_rationale=f"CSRF possible using {description.lower()}",
                         remediation="Strengthen origin validation",
                         owasp_category="A01:2021 – Broken Access Control",
-                        cwe_id="CWE-352"
+                        cwe_id="CWE-352",
+                        vulnerability_context=self._build_csrf_context(
+                            url, method, endpoint,
+                            f"Origin Validation Bypass: {description}",
+                            "origin_validation_bypass"
+                        )
                     )
 
                 await asyncio.sleep(CSRFConfig.REQUEST_DELAY)
@@ -880,7 +946,12 @@ class CSRFAgent(BaseSecurityAgent):
                                 exploitability_rationale="Increases CSRF risk",
                                 remediation="Set SameSite=Lax or Strict on session cookies",
                                 owasp_category="A05:2021 – Security Misconfiguration",
-                                cwe_id="CWE-1275"
+                                cwe_id="CWE-1275",
+                                vulnerability_context=self._build_csrf_context(
+                                    url, "GET", {},
+                                    "Missing SameSite Attribute",
+                                    "missing_samesite"
+                                )
                             )
 
                         if "samesite=none" in cookie_str.lower():
@@ -898,7 +969,12 @@ class CSRFAgent(BaseSecurityAgent):
                                 exploitability_rationale="Disables SameSite protection",
                                 remediation="Change to SameSite=Lax or Strict",
                                 owasp_category="A05:2021 – Security Misconfiguration",
-                                cwe_id="CWE-1275"
+                                cwe_id="CWE-1275",
+                                vulnerability_context=self._build_csrf_context(
+                                    url, "GET", {},
+                                    "SameSite=None Used",
+                                    "samesite_none"
+                                )
                             )
 
         except Exception as e:
@@ -935,7 +1011,12 @@ class CSRFAgent(BaseSecurityAgent):
                     exploitability_rationale="Enables cross-origin CSRF attacks",
                     remediation="Whitelist specific trusted origins only",
                     owasp_category="A05:2021 – Security Misconfiguration",
-                    cwe_id="CWE-942"
+                    cwe_id="CWE-942",
+                    vulnerability_context=self._build_csrf_context(
+                        url, "OPTIONS", {},
+                        "CORS Misconfiguration (Arbitrary Origin)",
+                        "cors_misconfiguration"
+                    )
                 )
 
             await asyncio.sleep(CSRFConfig.REQUEST_DELAY)
@@ -961,7 +1042,12 @@ class CSRFAgent(BaseSecurityAgent):
                         impact=6.0,
                         remediation="Reject null origin requests",
                         owasp_category="A05:2021 – Security Misconfiguration",
-                        cwe_id="CWE-942"
+                        cwe_id="CWE-942",
+                        vulnerability_context=self._build_csrf_context(
+                            url, "OPTIONS", {},
+                            "CORS Allows Null Origin",
+                            "cors_null_origin"
+                        )
                     )
 
         except Exception as e:
@@ -1015,7 +1101,12 @@ class CSRFAgent(BaseSecurityAgent):
                         exploitability_rationale="Token reuse extends attack window",
                         remediation="Implement one-time tokens with invalidation after use",
                         owasp_category="A01:2021 – Broken Access Control",
-                        cwe_id="CWE-352"
+                        cwe_id="CWE-352",
+                        vulnerability_context=self._build_csrf_context(
+                            test_url, "POST", {},
+                            "CSRF Token Reuse",
+                            "csrf_token_reuse"
+                        )
                     )
                 )
 

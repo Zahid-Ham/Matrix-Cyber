@@ -3,8 +3,8 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { LogOut, User } from 'lucide-react';
-import { SpiderWeb } from './SpiderWeb';
-import { useAuth } from '../context/AuthContext';
+import { SpiderWeb } from '@/components/SpiderWeb';
+import { useAuth } from '@/context/AuthContext';
 
 export function Navbar() {
     const { user, isAuthenticated, logout } = useAuth();

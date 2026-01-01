@@ -60,7 +60,7 @@ async def get_scan_context(scan_id: int, user_id: int, db: AsyncSession) -> str:
         
     return context
 
-@router.post("", response_model=ChatResponse)
+@router.post("/", response_model=ChatResponse)
 async def chat_with_matrix(
     request: ChatRequest,
     current_user: User = Depends(get_current_user),

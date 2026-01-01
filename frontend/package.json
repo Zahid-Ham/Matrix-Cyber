@@ -7,7 +7,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "generate:types": "openapi-typescript ../backend/openapi.json -o ./lib/backend_types.ts"
   },
   "dependencies": {
     "@react-pdf/renderer": "^4.3.1",
@@ -18,11 +19,13 @@
     "react-dom": "^18.2.0",
     "react-markdown": "^10.1.0",
     "recharts": "^2.10.3",
+    "rehype-sanitize": "^6.0.0",
     "remark-gfm": "^4.0.1"
   },
   "devDependencies": {
     "@tailwindcss/typography": "^0.5.19",
     "@types/node": "^20.10.6",
+    "openapi-typescript": "^7.6.1",
     "@types/react": "^18.2.46",
     "@types/react-dom": "^18.2.18",
     "autoprefixer": "^10.4.16",

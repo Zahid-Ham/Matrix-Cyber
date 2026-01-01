@@ -11,6 +11,7 @@ from collections import defaultdict
 
 from .base_agent import BaseSecurityAgent, AgentResult
 from models.vulnerability import Severity, VulnerabilityType
+from scoring import VulnerabilityContext, ConfidenceMethod
 
 logger = logging.getLogger(__name__)
 
@@ -228,6 +229,56 @@ class APISecurityAgent(BaseSecurityAgent):
 
         return endpoints
 
+    def _build_api_context(
+            self,
+            url: str,
+            vulnerability_type: str,
+            description: str,
+            detection_method: str = "api_probe",
+            data_exposed: List[str] = None
+    ) -> VulnerabilityContext:
+        """Build VulnerabilityContext for API security issues."""
+        
+        data_modifiable = []
+        service_disruption_possible = False
+        metric_impact = 5.0
+        exploitation_difficulty = "moderate"
+        
+        if vulnerability_type in ["bola_idor", "bfla_broken_function_auth", "mass_assignment"]:
+            metric_impact = 8.0
+            if data_exposed is None:
+                data_exposed = ["user_data", "database_records"]
+            data_modifiable = ["user_profile", "application_settings"]
+        elif vulnerability_type == "sensitive_data_exposure":
+            metric_impact = 7.5
+        elif vulnerability_type == "rate_limiting_missing":
+            metric_impact = 6.0
+            service_disruption_possible = True
+        elif vulnerability_type == "improper_inventory":
+            metric_impact = 3.0
+            data_exposed = ["api_endpoints"]
+            exploitation_difficulty = "difficult"
+        
+        return VulnerabilityContext(
+            vulnerability_type=vulnerability_type,
+            detection_method=detection_method,
+            endpoint=url,
+            parameter="api_endpoint",
+            http_method="GET/POST",
+            requires_user_interaction=False,
+            requires_authentication=False,
+            escapes_security_boundary=False, 
+            payload_succeeded=True,
+            data_exposed=data_exposed if data_exposed else [],
+            data_modifiable=data_modifiable,
+            service_disruption_possible=service_disruption_possible,
+            exploitation_difficulty=exploitation_difficulty,
+            additional_context={
+                "description": description,
+                "impact_level": metric_impact
+            }
+        )
+
     async def _test_data_exposure(self, url: str) -> Optional[AgentResult]:
         """
         Test for excessive data exposure (API3:2023 BOPLA - Part 1).
@@ -295,7 +346,13 @@ class APISecurityAgent(BaseSecurityAgent):
                     cwe_id="CWE-213",
                     reference_links=[
                         "https://owasp.org/API-Security/editions/2023/en/0xa3-broken-object-property-level-authorization/"
-                    ]
+                    ],
+                    vulnerability_context=self._build_api_context(
+                        url, "sensitive_data_exposure",
+                        f"Exposed data: {', '.join(unique_types)}",
+                        "response_analysis",
+                        data_exposed=unique_types
+                    )
                 )
 
         except Exception as e:
@@ -368,7 +425,9 @@ class APISecurityAgent(BaseSecurityAgent):
                                 vulnerability_type=VulnerabilityType.IDOR,
                                 is_vulnerable=True,
                                 severity=Severity.HIGH,
-                                confidence=85,
+                                confidence=self.calculate_confidence(ConfidenceMethod.LOGIC_MATCH, evidence_quality=0.9),
+                                detection_method="IDOR (BOLA) Detection",
+                                audit_log=[f"Detected unauthorized access to object {test_id} from {url}"],
                                 url=url,
                                 title="Broken Object Level Authorization (BOLA/IDOR)",
                                 description=(
@@ -392,7 +451,12 @@ class APISecurityAgent(BaseSecurityAgent):
                                 cwe_id="CWE-639",
                                 reference_links=[
                                     "https://owasp.org/API-Security/editions/2023/en/0xa1-broken-object-level-authorization/"
-                                ]
+                                ],
+                                vulnerability_context=self._build_api_context(
+                                    url, "bola_idor",
+                                    f"ID manipulation {original_id} -> {test_id} successful",
+                                    "idor_probe"
+                                )
                             )
 
             # Test UUID manipulation (if applicable)
@@ -409,7 +473,7 @@ class APISecurityAgent(BaseSecurityAgent):
                         vulnerability_type=VulnerabilityType.IDOR,
                         is_vulnerable=True,
                         severity=Severity.HIGH,
-                        confidence=80,
+                        confidence=self.calculate_confidence(ConfidenceMethod.LOGIC_MATCH),
                         url=url,
                         title="BOLA via UUID Manipulation",
                         description="API vulnerable to BOLA even with UUIDs. Manipulating UUID grants access to other objects.",
@@ -418,7 +482,12 @@ class APISecurityAgent(BaseSecurityAgent):
                         impact=8.0,
                         remediation="UUIDs alone don't prevent BOLA. Always implement authorization checks.",
                         owasp_category="API1:2023 – Broken Object Level Authorization",
-                        cwe_id="CWE-639"
+                        cwe_id="CWE-639",
+                        vulnerability_context=self._build_api_context(
+                            url, "bola_idor",
+                            "UUID manipulation successful",
+                            "uuid_probe"
+                        )
                     )
 
         except Exception as e:
@@ -509,7 +578,12 @@ class APISecurityAgent(BaseSecurityAgent):
                     cwe_id="CWE-770",
                     reference_links=[
                         "https://owasp.org/API-Security/editions/2023/en/0xa4-unrestricted-resource-consumption/"
-                    ]
+                    ],
+                    vulnerability_context=self._build_api_context(
+                        url, "rate_limiting_missing",
+                        f"Accepted {success_count} requests in {elapsed:.1f}s",
+                        "rate_limit_probe"
+                    )
                 )
 
         except Exception as e:
@@ -573,7 +647,12 @@ class APISecurityAgent(BaseSecurityAgent):
                                 cwe_id="CWE-915",
                                 reference_links=[
                                     "https://owasp.org/API-Security/editions/2023/en/0xa3-broken-object-property-level-authorization/"
-                                ]
+                                ],
+                                vulnerability_context=self._build_api_context(
+                                    url, "mass_assignment",
+                                    f"Field '{key}' accepted/reflected via mass assignment",
+                                    "payload_injection"
+                                )
                             )
 
         except Exception as e:
@@ -638,7 +717,12 @@ class APISecurityAgent(BaseSecurityAgent):
                     "Use API gateways to enforce version deprecation."
                 ),
                 owasp_category="API9:2023 – Improper Inventory Management",
-                cwe_id="CWE-1059"
+                cwe_id="CWE-1059",
+                vulnerability_context=self._build_api_context(
+                    target_url, "improper_inventory",
+                    f"Multiple API versions exposed: {versions_found}",
+                    "version_enumeration"
+                )
             ))
 
         return results
@@ -703,7 +787,12 @@ class APISecurityAgent(BaseSecurityAgent):
                         cwe_id="CWE-285",
                         reference_links=[
                             "https://owasp.org/API-Security/editions/2023/en/0xa5-broken-function-level-authorization/"
-                        ]
+                        ],
+                        vulnerability_context=self._build_api_context(
+                            url, "bfla_broken_function_auth",
+                            f"Privileged endpoint '{path}' accessible without auth",
+                            "admin_access_probe"
+                        )
                     ))
 
             except Exception as e:
@@ -748,7 +837,12 @@ class APISecurityAgent(BaseSecurityAgent):
                     exploitability_rationale="Minor misconfiguration. Present but not optimal.",
                     remediation="Set X-Content-Type-Options to 'nosniff'.",
                     owasp_category="API8:2023 – Security Misconfiguration",
-                    cwe_id="CWE-693"
+                    cwe_id="CWE-693",
+                    vulnerability_context=self._build_api_context(
+                        url, "security_misconfiguration",
+                        f"X-Content-Type-Options: {value}",
+                        "header_check"
+                    )
                 )
             return True, None
 
@@ -770,7 +864,12 @@ class APISecurityAgent(BaseSecurityAgent):
                     exploitability_rationale="Potential clickjacking if framing allowed from untrusted origins.",
                     remediation="Set X-Frame-Options to 'DENY' or 'SAMEORIGIN'.",
                     owasp_category="API8:2023 – Security Misconfiguration",
-                    cwe_id="CWE-1021"
+                    cwe_id="CWE-1021",
+                    vulnerability_context=self._build_api_context(
+                        url, "security_misconfiguration",
+                        f"X-Frame-Options: {value}",
+                        "header_check"
+                    )
                 )
             return True, None
 
@@ -793,7 +892,12 @@ class APISecurityAgent(BaseSecurityAgent):
                         impact=2.0,
                         remediation="Set max-age to at least 31536000 (1 year).",
                         owasp_category="API8:2023 – Security Misconfiguration",
-                        cwe_id="CWE-319"
+                        cwe_id="CWE-319",
+                        vulnerability_context=self._build_api_context(
+                            url, "security_misconfiguration",
+                            f"HSTS Max-Age too short: {max_age}",
+                            "header_check"
+                        )
                     )
             return True, None
 
@@ -968,7 +1072,13 @@ class APISecurityAgent(BaseSecurityAgent):
                             exploitability_rationale="Direct access to credentials. Immediate system compromise possible.",
                             remediation="Remove or restrict access. Use web server rules to deny access to sensitive files.",
                             owasp_category="API8:2023 – Security Misconfiguration",
-                            cwe_id="CWE-538"
+                            cwe_id="CWE-538",
+                            vulnerability_context=self._build_api_context(
+                                url, "sensitive_config_exposure",
+                                f"Exposed config {path} containing secrets",
+                                "file_enumeration",
+                                data_exposed=["secrets", "credentials"]
+                            )
                         ))
 
             except Exception as e:
@@ -1023,7 +1133,12 @@ class APISecurityAgent(BaseSecurityAgent):
                         "Never use 'Allow-Credentials: true' with 'Allow-Origin: *'."
                     ),
                     owasp_category="API8:2023 – Security Misconfiguration",
-                    cwe_id="CWE-942"
+                    cwe_id="CWE-942",
+                    vulnerability_context=self._build_api_context(
+                        url, "cors_misconfiguration",
+                        "Reflected origin with credentials allowed",
+                        "cors_probe"
+                    )
                 )
 
             # Medium: wildcard with credentials (browser-blocked but indicates poor understanding)
@@ -1041,7 +1156,12 @@ class APISecurityAgent(BaseSecurityAgent):
                     impact=7.0,
                     remediation="Use explicit allowed origins instead of wildcards with credentials.",
                     owasp_category="API8:2023 – Security Misconfiguration",
-                    cwe_id="CWE-942"
+                    cwe_id="CWE-942",
+                    vulnerability_context=self._build_api_context(
+                        url, "cors_misconfiguration",
+                        "Wildcard origin with credentials allowed",
+                        "cors_probe"
+                    )
                 )
 
             # Info: wildcard without credentials (acceptable for public APIs)
@@ -1059,7 +1179,12 @@ class APISecurityAgent(BaseSecurityAgent):
                     impact=2.0,
                     remediation="Verify endpoint doesn't return sensitive user-specific data. If it does, use origin whitelist.",
                     owasp_category="API8:2023 – Security Misconfiguration",
-                    cwe_id="CWE-942"
+                    cwe_id="CWE-942",
+                    vulnerability_context=self._build_api_context(
+                        url, "cors_misconfiguration",
+                        "Wildcard origin allowed",
+                        "cors_probe"
+                    )
                 )
 
             # Low: reflected origin without credentials
@@ -1077,7 +1202,12 @@ class APISecurityAgent(BaseSecurityAgent):
                     impact=3.0,
                     remediation="Implement origin whitelist. Ensure no sensitive data accessible without authentication.",
                     owasp_category="API8:2023 – Security Misconfiguration",
-                    cwe_id="CWE-942"
+                    cwe_id="CWE-942",
+                    vulnerability_context=self._build_api_context(
+                        url, "cors_misconfiguration",
+                        "Reflected origin allowed (no credentials)",
+                        "cors_probe"
+                    )
                 )
 
         except Exception as e:
@@ -1114,7 +1244,12 @@ class APISecurityAgent(BaseSecurityAgent):
                         impact=7.0 if is_session else 3.0,
                         remediation="Add 'HttpOnly' flag to prevent JavaScript access to sensitive cookies.",
                         owasp_category="API8:2023 - Security Misconfiguration",
-                        cwe_id="CWE-1004"
+                        cwe_id="CWE-1004",
+                        vulnerability_context=self._build_api_context(
+                            url, "insecure_cookie",
+                            f"Cookie {cookie_name} missing HttpOnly",
+                            "cookie_check"
+                        )
                     ))
 
                 if "secure" not in cookie_lower and url.startswith("https"):
@@ -1128,7 +1263,12 @@ class APISecurityAgent(BaseSecurityAgent):
                         likelihood=5.0, impact=6.0 if is_session else 3.0,
                         remediation="Add 'Secure' flag to ensure cookie is only sent over HTTPS.",
                         owasp_category="API8:2023 - Security Misconfiguration",
-                        cwe_id="CWE-614"
+                        cwe_id="CWE-614",
+                        vulnerability_context=self._build_api_context(
+                            url, "insecure_cookie",
+                            f"Cookie {cookie_name} missing Secure flag",
+                            "cookie_check"
+                        )
                     ))
 
                 if "samesite" not in cookie_lower:
@@ -1141,7 +1281,12 @@ class APISecurityAgent(BaseSecurityAgent):
                         likelihood=4.0, impact=5.0 if is_session else 2.0,
                         remediation="Add 'SameSite=Strict' or 'SameSite=Lax' attribute.",
                         owasp_category="API8:2023 - Security Misconfiguration",
-                        cwe_id="CWE-1275"
+                        cwe_id="CWE-1275",
+                        vulnerability_context=self._build_api_context(
+                            url, "insecure_cookie",
+                            f"Cookie {cookie_name} missing SameSite attribute",
+                            "cookie_check"
+                        )
                     ))
 
             if cookies:
@@ -1173,7 +1318,12 @@ class APISecurityAgent(BaseSecurityAgent):
                             likelihood=7.0, impact=6.0,
                             remediation="Implement HTTP to HTTPS redirect for all pages.",
                             owasp_category="API8:2023 - Security Misconfiguration",
-                            cwe_id="CWE-319"
+                            cwe_id="CWE-319",
+                            vulnerability_context=self._build_api_context(
+                                url, "insecure_communication",
+                                "Site accessible over HTTP without redirect",
+                                "ssl_check"
+                            )
                         ))
                     elif response.status_code in (301, 302, 307, 308):
                         logger.debug(f"[API Agent] HTTP correctly redirects to HTTPS: {response.status_code}")
@@ -1197,7 +1347,12 @@ class APISecurityAgent(BaseSecurityAgent):
                                 likelihood=3.0, impact=4.0,
                                 remediation="Set HSTS max-age to at least 31536000 seconds (1 year).",
                                 owasp_category="API8:2023 - Security Misconfiguration",
-                                cwe_id="CWE-523"
+                                cwe_id="CWE-523",
+                                vulnerability_context=self._build_api_context(
+                                    url, "security_misconfiguration",
+                                    f"HSTS Max-Age too short: {max_age}",
+                                    "ssl_check"
+                                )
                             ))
 
                     if "includesubdomains" not in hsts.lower():
@@ -1210,7 +1365,12 @@ class APISecurityAgent(BaseSecurityAgent):
                             likelihood=2.0, impact=3.0,
                             remediation="Add 'includeSubDomains' directive to HSTS header.",
                             owasp_category="API8:2023 - Security Misconfiguration",
-                            cwe_id="CWE-523"
+                            cwe_id="CWE-523",
+                            vulnerability_context=self._build_api_context(
+                                url, "security_misconfiguration",
+                                "HSTS missing includeSubDomains",
+                                "ssl_check"
+                            )
                         ))
 
             logger.info(f"[API Agent] Completed SSL/TLS security checks for {url}")

@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import Link from 'next/link';
-import { Mail, Lock, User, Building, ArrowRight, Loader2, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { Mail, Lock, User, Building, ArrowRight, Loader2, AlertCircle, CheckCircle2, Eye, EyeOff } from 'lucide-react';
 import { SpiderWeb } from '../../components/SpiderWeb';
 import { useAuth } from '../../context/AuthContext';
 
@@ -13,6 +13,8 @@ export default function SignupPage() {
     const [fullName, setFullName] = useState('');
     const [company, setCompany] = useState('');
     const [password, setPassword] = useState('');
+    const [showPassword, setShowPassword] = useState(false);
+    const [agreedToTerms, setAgreedToTerms] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
     const handleSubmit = async (e: React.FormEvent) => {
@@ -21,6 +23,11 @@ export default function SignupPage() {
 
         if (!email || !username || !password) {
             setError('Core protocols (Email, Username, Cipher) are required');
+            return;
+        }
+
+        if (!agreedToTerms) {
+            setError('You must accept the Matrix terms and conditions to proceed');
             return;
         }
 
@@ -128,12 +135,20 @@ export default function SignupPage() {
                                 <div className="relative group">
                                     <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted transition-colors group-focus-within:text-accent-primary" />
                                     <input
-                                        type="password"
+                                        type={showPassword ? 'text' : 'password'}
                                         value={password}
                                         onChange={(e) => setPassword(e.target.value)}
                                         placeholder="Master Key"
-                                        className="w-full pl-10 pr-4 py-3 bg-warm-50/30 border border-warm-200/60 rounded-xl focus:ring-2 focus:ring-accent-primary/20 focus:border-accent-primary transition-all outline-none text-text-primary text-sm font-medium placeholder:text-text-muted/50"
+                                        className="w-full pl-10 pr-12 py-3 bg-warm-50/30 border border-warm-200/60 rounded-xl focus:ring-2 focus:ring-accent-primary/20 focus:border-accent-primary transition-all outline-none text-text-primary text-sm font-medium placeholder:text-text-muted/50"
                                     />
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowPassword(!showPassword)}
+                                        className="absolute right-4 top-1/2 -translate-y-1/2 text-text-muted hover:text-accent-primary transition-colors p-1"
+                                        title={showPassword ? "Hide password" : "Show password"}
+                                    >
+                                        {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                                    </button>
                                 </div>
                             </div>
                         </div>
@@ -146,14 +161,26 @@ export default function SignupPage() {
                             <div className="relative flex flex-col justify-center h-full">
 
                                 <div className="space-y-6">
-                                    <div className="flex items-start gap-4 p-5 bg-white/60 backdrop-blur-sm rounded-2xl border border-accent-primary/10 shadow-sm relative overflow-hidden group">
+                                    <div className="flex items-start gap-4 p-5 bg-white/60 backdrop-blur-sm rounded-2xl border border-accent-primary/10 shadow-sm relative overflow-hidden group transition-all hover:bg-white">
                                         <div className="absolute top-0 left-0 w-1 h-full bg-accent-primary/40 group-hover:bg-accent-primary transition-colors" />
-                                        <div className="w-8 h-8 rounded-lg bg-accent-primary/5 flex items-center justify-center flex-shrink-0">
-                                            <CheckCircle2 className="w-4 h-4 text-accent-primary" />
-                                        </div>
-                                        <p className="text-[10px] text-text-secondary leading-relaxed uppercase tracking-widest font-bold">
-                                            By enlisting, you agree to the Matrix protocols and acknowledge the sovereignty of zero-knowledge audit logs.
-                                        </p>
+                                        <label className="flex items-start gap-4 cursor-pointer w-full">
+                                            <div className="relative flex items-center mt-0.5">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={agreedToTerms}
+                                                    onChange={(e) => setAgreedToTerms(e.target.checked)}
+                                                    className="peer h-5 w-5 cursor-pointer appearance-none rounded-md border border-warm-300 bg-white transition-all checked:bg-accent-primary checked:border-accent-primary focus:outline-none"
+                                                />
+                                                <div className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-white opacity-0 peer-checked:opacity-100">
+                                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor" stroke="currentColor" strokeWidth="1">
+                                                        <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd"></path>
+                                                    </svg>
+                                                </div>
+                                            </div>
+                                            <p className="text-[10px] text-text-secondary leading-relaxed uppercase tracking-widest font-bold">
+                                                By enlisting, I acknowledge the Matrix protocols and agree to the <span className="text-accent-primary underline">Terms and Conditions</span>.
+                                            </p>
+                                        </label>
                                     </div>
 
                                     <button

@@ -11,6 +11,7 @@ from dataclasses import dataclass
 
 from .base_agent import BaseSecurityAgent, AgentResult
 from models.vulnerability import Severity, VulnerabilityType
+from scoring import VulnerabilityContext, ConfidenceMethod
 
 if TYPE_CHECKING:
     from core.scan_context import ScanContext
@@ -323,6 +324,53 @@ class AuthenticationAgent(BaseSecurityAgent):
 
         return {"is_login": False}
 
+    def _build_auth_context(
+            self,
+            url: str,
+            vulnerability_type: str,
+            description: str,
+            detection_method: str = "auth_probe"
+    ) -> VulnerabilityContext:
+        """Build VulnerabilityContext for authentication issues."""
+        
+        # Determine specific impacts based on vuln type
+        confidentiality_impact = "None"
+        integrity_impact = "None"
+        availability_impact = "None"
+        metric_impact = 5.0 # Default
+        
+        data_exposed = []
+        data_modifiable = []
+        if vulnerability_type in ["default_credentials", "auth_bypass", "account_takeover"]:
+            data_exposed = ["user_credentials", "personal_info", "all_data"]
+            data_modifiable = ["user_credentials", "personal_info", "all_data"]
+            metric_impact = 9.0
+        elif vulnerability_type in ["weak_password_policy", "session_fixation", "brute_force_susceptibility"]:
+            data_exposed = ["session_tokens", "user_credentials"]
+            data_modifiable = ["session_tokens"]
+            metric_impact = 7.5
+        elif "enumeration" in vulnerability_type or vulnerability_type == "info_disclosure":
+            data_exposed = ["usernames"]
+            metric_impact = 5.0
+            
+        return VulnerabilityContext(
+            vulnerability_type=vulnerability_type,
+            detection_method=detection_method,
+            endpoint=url,
+            parameter="authentication", 
+            http_method="POST",
+            requires_user_interaction=False,
+            requires_authentication=False,
+            escapes_security_boundary=False,
+            payload_succeeded=True,
+            data_exposed=data_exposed,
+            data_modifiable=data_modifiable,
+            additional_context={
+                "description": description,
+                "impact_level": metric_impact
+            }
+        )
+
     async def _test_default_credentials(
             self,
             endpoint: Dict[str, Any],
@@ -378,7 +426,7 @@ class AuthenticationAgent(BaseSecurityAgent):
                         vulnerability_type=VulnerabilityType.BROKEN_AUTH,
                         is_vulnerable=True,
                         severity=Severity.CRITICAL,
-                        confidence=90,
+                        confidence=self.calculate_confidence(ConfidenceMethod.CONFIRMED_EXPLOIT),
                         url=url,
                         title="Default Credentials Accepted",
                         description=f"The application accepts default credentials (username: {username}). This allows attackers to gain unauthorized access using well-known default credential combinations.",
@@ -386,10 +434,11 @@ class AuthenticationAgent(BaseSecurityAgent):
                         remediation="Force users to change default passwords on first login. Implement account lockout after failed attempts. Use strong password policies. Never ship with default credentials.",
                         owasp_category="A07:2021 – Identification and Authentication Failures",
                         cwe_id="CWE-798",
-                        reference_links=[
-                            "https://owasp.org/Top10/A07_2021-Identification_and_Authentication_Failures/",
-                            "https://cwe.mitre.org/data/definitions/798.html"
-                        ]
+                        vulnerability_context=self._build_auth_context(
+                            url, "default_credentials",
+                            f"Default credentials accepted: {username}",
+                            "credential_stuffing"
+                        )
                     )
 
                 # Small delay to avoid hammering
@@ -418,7 +467,7 @@ class AuthenticationAgent(BaseSecurityAgent):
         try:
             test_users = [
                 "admin",
-                f"nonexistent_user_{hash('test')[:8]}",
+                f"nonexistent_user_{str(hash('test'))[:8]}",
                 "test@example.com",
                 f"invalid_{int(time.time())}"
             ]
@@ -447,7 +496,7 @@ class AuthenticationAgent(BaseSecurityAgent):
                             vulnerability_type=VulnerabilityType.BROKEN_AUTH,
                             is_vulnerable=True,
                             severity=Severity.MEDIUM,
-                            confidence=75,
+                            confidence=self.calculate_confidence(ConfidenceMethod.SPECIFIC_ERROR),
                             url=url,
                             title="Username Enumeration via Error Messages",
                             description="The login form returns different error messages for valid vs invalid usernames, allowing attackers to enumerate valid user accounts.",
@@ -457,7 +506,12 @@ class AuthenticationAgent(BaseSecurityAgent):
                             cwe_id="CWE-204",
                             reference_links=[
                                 "https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/03-Identity_Management_Testing/04-Testing_for_Account_Enumeration_and_Guessable_User_Account"
-                            ]
+                            ],
+                            vulnerability_context=self._build_auth_context(
+                                url, "username_enumeration",
+                                f"Username enumeration via {issue_type} error",
+                                "error_based_enum"
+                            )
                         )
 
         except Exception as e:
@@ -486,7 +540,7 @@ class AuthenticationAgent(BaseSecurityAgent):
                 ("admin", "likely_valid"),
                 ("administrator", "likely_valid"),
                 (f"invalid_{int(time.time())}", "invalid"),
-                (f"notreal_{hash('x')[:8]}", "invalid"),
+                (f"notreal_{str(hash('x'))[:8]}", "invalid"),
             ]
 
             timing_results: List[TimingResult] = []
@@ -515,12 +569,12 @@ class AuthenticationAgent(BaseSecurityAgent):
                 return None
 
             # Analyze timing differences
-            valid_times = [r.response_time for r in timing_results if "likely_valid" in str(r.username)]
-            invalid_times = [r.response_time for r in timing_results if "invalid" in str(r.username)]
+            valid_results = [r for r in timing_results if any(v[0] == r.username for v in test_cases if v[1] == "likely_valid")]
+            invalid_results = [r for r in timing_results if any(v[0] == r.username for v in test_cases if v[1] == "invalid")]
 
-            if valid_times and invalid_times:
-                avg_valid = sum(valid_times) / len(valid_times)
-                avg_invalid = sum(invalid_times) / len(invalid_times)
+            if valid_results and invalid_results:
+                avg_valid = sum(r.response_time for r in valid_results) / len(valid_results)
+                avg_invalid = sum(r.response_time for r in invalid_results) / len(invalid_results)
                 diff = abs(avg_valid - avg_invalid)
 
                 if diff > AuthConfig.TIMING_DIFFERENCE_THRESHOLD:
@@ -529,7 +583,7 @@ class AuthenticationAgent(BaseSecurityAgent):
                         vulnerability_type=VulnerabilityType.BROKEN_AUTH,
                         is_vulnerable=True,
                         severity=Severity.MEDIUM,
-                        confidence=65,
+                        confidence=self.calculate_confidence(ConfidenceMethod.GENERIC_ERROR_OR_AI, evidence_quality=0.8), # Timing is statistical/heuristic
                         url=url,
                         title="Username Enumeration via Timing Analysis",
                         description=f"The login endpoint shows measurable timing differences ({diff:.3f}s) between valid and invalid usernames, allowing enumeration through timing attacks.",
@@ -539,7 +593,12 @@ class AuthenticationAgent(BaseSecurityAgent):
                         cwe_id="CWE-208",
                         reference_links=[
                             "https://cwe.mitre.org/data/definitions/208.html"
-                        ]
+                        ],
+                        vulnerability_context=self._build_auth_context(
+                            url, "username_enumeration_timing",
+                            f"Timing difference: {diff:.3f}s",
+                            "timing_analysis"
+                        )
                     )
 
         except Exception as e:
@@ -596,7 +655,7 @@ class AuthenticationAgent(BaseSecurityAgent):
                     vulnerability_type=VulnerabilityType.BROKEN_AUTH,
                     is_vulnerable=True,
                     severity=Severity.MEDIUM,
-                    confidence=70,
+                    confidence=self.calculate_confidence(ConfidenceMethod.SPECIFIC_ERROR),
                     url=url,
                     title="Missing Rate Limiting on Authentication",
                     description=f"The login endpoint does not implement rate limiting. {successful_requests} rapid requests were accepted without blocking or throttling, enabling brute force attacks.",
@@ -606,7 +665,12 @@ class AuthenticationAgent(BaseSecurityAgent):
                     cwe_id="CWE-307",
                     reference_links=[
                         "https://cheatsheetseries.owasp.org/cheatsheets/Authentication_Cheat_Sheet.html"
-                    ]
+                    ],
+                    vulnerability_context=self._build_auth_context(
+                        url, "rate_limiting_missing",
+                        f"Accepted {successful_requests} requests without throttling",
+                        "rate_limit_probe"
+                    )
                 )
 
         except Exception as e:
@@ -658,7 +722,7 @@ class AuthenticationAgent(BaseSecurityAgent):
                     vulnerability_type=VulnerabilityType.BROKEN_AUTH,
                     is_vulnerable=True,
                     severity=Severity.MEDIUM,
-                    confidence=70,
+                    confidence=self.calculate_confidence(ConfidenceMethod.SPECIFIC_ERROR),
                     url=url,
                     title="Weak Session Token Generation",
                     description=f"Session management issues detected: {', '.join(issues)}",
@@ -668,7 +732,12 @@ class AuthenticationAgent(BaseSecurityAgent):
                     cwe_id="CWE-330",
                     reference_links=[
                         "https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html"
-                    ]
+                    ],
+                    vulnerability_context=self._build_auth_context(
+                        url, "weak_session_management",
+                        f"Issues: {', '.join(issues)}",
+                        "session_analysis"
+                    )
                 )
 
         except Exception as e:
@@ -725,7 +794,7 @@ class AuthenticationAgent(BaseSecurityAgent):
                             vulnerability_type=VulnerabilityType.BROKEN_AUTH,
                             is_vulnerable=True,
                             severity=Severity.MEDIUM,
-                            confidence=80,
+                            confidence=self.calculate_confidence(ConfidenceMethod.CONFIRMED_EXPLOIT),
                             url=reg_url,
                             title="Weak Password Policy",
                             description="The application accepts very weak passwords (e.g., '123456') without enforcing minimum security requirements.",
@@ -735,7 +804,12 @@ class AuthenticationAgent(BaseSecurityAgent):
                             cwe_id="CWE-521",
                             reference_links=[
                                 "https://cheatsheetseries.owasp.org/cheatsheets/Authentication_Cheat_Sheet.html#implement-proper-password-strength-controls"
-                            ]
+                            ],
+                            vulnerability_context=self._build_auth_context(
+                                reg_url, "weak_password_policy",
+                                "Accepted password '123456'",
+                                "password_policy_probe"
+                            )
                         )
 
                 await asyncio.sleep(AuthConfig.RATE_LIMIT_DELAY)
@@ -790,7 +864,12 @@ class AuthenticationAgent(BaseSecurityAgent):
                             evidence=f"Issues found: {issues}",
                             remediation="Use cryptographically random tokens. Send tokens via email only. Implement short expiration (15-30 mins). Use one-time tokens. Never expose tokens in URLs.",
                             owasp_category="A07:2021 – Identification and Authentication Failures",
-                            cwe_id="CWE-640"
+                            cwe_id="CWE-640",
+                            vulnerability_context=self._build_auth_context(
+                                url, "insecure_password_reset",
+                                f"Issues: {', '.join(issues)}",
+                                "reset_token_analysis"
+                            )
                         ))
 
             except Exception as e:
@@ -847,7 +926,12 @@ class AuthenticationAgent(BaseSecurityAgent):
                                 evidence=f"JWT token detected (length: {len(token)})",
                                 remediation="Verify JWT signatures server-side. Use strong algorithms (RS256, not HS256 with weak secrets). Implement short expiration. Use refresh tokens. Validate all claims.",
                                 owasp_category="A07:2021 – Identification and Authentication Failures",
-                                cwe_id="CWE-347"
+                                cwe_id="CWE-347",
+                                vulnerability_context=self._build_auth_context(
+                                    url, "jwt_misconfiguration",
+                                    "JWT token exposed without validation check",
+                                    "token_analysis"
+                                )
                             ))
                             break  # One finding per endpoint
 
@@ -904,7 +988,13 @@ class AuthenticationAgent(BaseSecurityAgent):
             evidence="No MFA/2FA indicators found in authentication flow",
             remediation="Implement multi-factor authentication using TOTP (Google Authenticator, Authy), SMS (less secure), or hardware tokens (most secure). Make MFA mandatory for privileged accounts.",
             owasp_category="A07:2021 – Identification and Authentication Failures",
-            cwe_id="CWE-308"
+            cwe_id="CWE-308",
+            vulnerability_context=self._build_auth_context(
+                login_endpoints[0].get("url") if login_endpoints else "unknown",
+                "missing_mfa",
+                "No MFA indicators found",
+                "mfa_check"
+            )
         )
 
     async def _check_session_cookies(self, url: str) -> List[AgentResult]:
@@ -965,7 +1055,12 @@ class AuthenticationAgent(BaseSecurityAgent):
                         cwe_id="CWE-614",
                         reference_links=[
                             "https://owasp.org/www-community/controls/SecureCookieAttribute"
-                        ]
+                        ],
+                        vulnerability_context=self._build_auth_context(
+                            url, "insecure_cookie_attributes",
+                            f"Cookie {cookie.name} missing {', '.join(issues)}",
+                            "cookie_analysis"
+                        )
                     ))
 
         except Exception as e:

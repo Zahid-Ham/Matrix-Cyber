@@ -238,13 +238,13 @@ async def test_orchestrator():
                     print(f"  - {result.title} ({result.agent_name})")
         
         # Show scan metrics
-        if hasattr(orchestrator, 'scan_metrics'):
+        if hasattr(orchestrator, 'scan_metrics') and orchestrator.scan_metrics:
             metrics = orchestrator.scan_metrics
             print(f"\n--- Scan Metrics ---")
-            print(f"Total Findings: {metrics.get('total_findings', 0)}")
-            print(f"High Confidence: {metrics.get('high_confidence_findings', 0)}")
-            print(f"Average Signal Quality: {metrics.get('average_signal_quality', 0):.2f}")
-            print(f"Correlation Chains: {metrics.get('correlation_chains_found', 0)}")
+            print(f"Total Findings: {metrics.findings_count}")
+            print(f"Average Confidence: {metrics.average_confidence:.1f}")
+            print(f"Signal Quality Score: {metrics.signal_quality_score:.2f}")
+            print(f"Exploitability Gated: {metrics.exploitability_gated_count}")
         
     except Exception as e:
         print(f"Error during orchestrated scan: {e}")

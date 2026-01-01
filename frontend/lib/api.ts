@@ -2,63 +2,108 @@
  * API client for Matrix backend
  */
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+const API_BASE = ''; // Force use of Next.js proxy
+console.log('[API] Initialized with API_BASE:', API_BASE);
 
 interface ApiError {
     detail: string;
 }
 
 class ApiClient {
-    private token: string | null = null;
+    // No explicit token management needed - handled by HttpOnly cookies
 
-    setToken(token: string) {
-        this.token = token;
-        if (typeof window !== 'undefined') {
-            localStorage.setItem('matrix_token', token);
-        }
-    }
-
-    getToken(): string | null {
-        if (this.token) return this.token;
-        if (typeof window !== 'undefined') {
-            return localStorage.getItem('matrix_token');
-        }
+    // Helper to get cookie by name
+    private getCookie(name: string): string | null {
+        if (typeof document === 'undefined') return null;
+        const match = document.cookie.match(new RegExp('(^| )' + name + '=([^;]+)'));
+        if (match) return match[2];
         return null;
-    }
-
-    clearToken() {
-        this.token = null;
-        if (typeof window !== 'undefined') {
-            localStorage.removeItem('matrix_token');
-        }
     }
 
     private async request<T>(
         endpoint: string,
         options: RequestInit = {}
     ): Promise<T> {
-        const token = this.getToken();
-
         const headers: HeadersInit = {
             'Content-Type': 'application/json',
             ...options.headers,
         };
 
-        if (token) {
-            (headers as Record<string, string>)['Authorization'] = `Bearer ${token}`;
+        // Inject CSRF Token from cookie
+        const csrfToken = this.getCookie('CSRF-TOKEN');
+        if (csrfToken) {
+            console.log('[API] CSRF Token found, injecting into headers');
+            (headers as any)['X-CSRF-Token'] = csrfToken;
+        } else {
+            if (options.method && options.method !== 'GET') {
+                console.warn('[API] WARNING: No CSRF token found for unsafe request:', endpoint);
+            }
         }
 
-        const response = await fetch(`${API_BASE}${endpoint}`, {
-            ...options,
-            headers,
-        });
+        try {
+            const response = await fetch(`${API_BASE}${endpoint}`, {
+                ...options,
+                headers,
+                credentials: 'include', // CRITICAL: Send cookies
+                cache: 'no-store', // Disable caching to ensure fresh scan data
+            });
 
-        if (!response.ok) {
-            const error: ApiError = await response.json().catch(() => ({ detail: 'Unknown error' }));
-            throw new Error(error.detail || `HTTP error ${response.status}`);
+            // Handle 401 Unauthorized (Token Expired?)
+            if (response.status === 401 && !endpoint.includes('/auth/login')) {
+                // Attempt refresh
+                try {
+                    const refreshResponse = await fetch(`${API_BASE}/api/auth/refresh/`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRF-Token': this.getCookie('CSRF-TOKEN') || ''
+                        },
+                        credentials: 'include',
+                    });
+
+                    if (refreshResponse.ok) {
+                        // Retry original request with same headers (which include CSRF)
+                        const retryResponse = await fetch(`${API_BASE}${endpoint}`, {
+                            ...options,
+                            headers,
+                            credentials: 'include',
+                        });
+
+                        if (!retryResponse.ok) {
+                            const error: ApiError = await retryResponse.json().catch(() => ({ detail: 'Unknown error' }));
+                            throw new Error(error.detail || `HTTP error ${retryResponse.status}`);
+                        }
+
+                        return retryResponse.json();
+                    }
+                } catch (e) {
+                    console.error("Auto-refresh failed", e);
+                }
+            }
+
+            if (!response.ok) {
+                const error: any = await response.json().catch(() => ({ detail: 'Unknown error' }));
+                let message = error.detail || `HTTP error ${response.status}`;
+
+                // If there's a detailed error from the backend (like in debug mode), include it
+                if (error.error) {
+                    message = `${message}: ${error.error}`;
+                }
+
+                if (message === 'Could not validate credentials') {
+                    message = 'Session expired. Please log in again.';
+                }
+                throw new Error(message);
+            }
+
+            return response.json();
+        } catch (err) {
+            throw err;
         }
+    }
 
-        return response.json();
+    async ensureCsrf() {
+        return this.request<{ status: string }>('/api/csrf/');
     }
 
     // Auth endpoints
@@ -67,31 +112,36 @@ class ApiClient {
         username: string;
         password: string;
         full_name?: string;
+        company?: string;
     }) {
         return this.request<{
             access_token: string;
             user: User;
-        }>('/api/auth/register', {
+        }>('/api/auth/register/', {
             method: 'POST',
             body: JSON.stringify(data),
         });
     }
 
     async login(email: string, password: string) {
-        const response = await this.request<{
+        // Response contains token for backward compat, but cookies are set
+        return this.request<{
             access_token: string;
             user: User;
-        }>('/api/auth/login', {
+        }>('/api/auth/login/', {
             method: 'POST',
             body: JSON.stringify({ email, password }),
         });
+    }
 
-        this.setToken(response.access_token);
-        return response;
+    async logout() {
+        return this.request<{ message: string }>('/api/auth/logout/', {
+            method: 'POST'
+        });
     }
 
     async getCurrentUser() {
-        return this.request<User>('/api/auth/me');
+        return this.request<User>('/api/auth/me/');
     }
 
     // Scan endpoints
@@ -100,10 +150,12 @@ class ApiClient {
         target_name?: string;
         scan_type?: string;
         agents_enabled?: string[];
+        enable_waf_evasion?: boolean;
+        waf_evasion_consent?: boolean;
     }) {
         return this.request<Scan>('/api/scans/', {
             method: 'POST',
-            body: JSON.stringify(data),
+            body: JSON.stringify(data)
         });
     }
 
@@ -118,23 +170,23 @@ class ApiClient {
     }
 
     async getScan(scanId: number) {
-        return this.request<Scan>(`/api/scans/${scanId}`);
+        return this.request<Scan>(`/api/scans/${scanId}/`);
     }
 
     async startScan(scanId: number) {
-        return this.request<Scan>(`/api/scans/${scanId}/start`, {
+        return this.request<Scan>(`/api/scans/${scanId}/start/`, {
             method: 'POST',
         });
     }
 
     async cancelScan(scanId: number) {
-        return this.request<Scan>(`/api/scans/${scanId}/cancel`, {
+        return this.request<Scan>(`/api/scans/${scanId}/cancel/`, {
             method: 'POST',
         });
     }
 
     async deleteScan(scanId: number) {
-        return this.request<void>(`/api/scans/${scanId}`, {
+        return this.request<void>(`/api/scans/${scanId}/`, {
             method: 'DELETE',
         });
     }
@@ -157,7 +209,7 @@ class ApiClient {
             medium: number;
             low: number;
             info: number;
-        }>(`/api/vulnerabilities/scan/${scanId}/summary`);
+        }>(`/api/vulnerabilities/scan/${scanId}/summary/`);
     }
 
     async updateVulnerability(
@@ -168,7 +220,7 @@ class ApiClient {
             is_fixed?: boolean;
         }
     ) {
-        return this.request<Vulnerability>(`/api/vulnerabilities/${vulnId}`, {
+        return this.request<Vulnerability>(`/api/vulnerabilities/${vulnId}/`, {
             method: 'PATCH',
             body: JSON.stringify(data),
         });
@@ -179,7 +231,7 @@ class ApiClient {
         return this.request<{
             response: string;
             metadata?: any;
-        }>('/api/chat', {
+        }>('/api/chat/', {
             method: 'POST',
             body: JSON.stringify({ message, scan_id: scanId }),
         });
@@ -213,6 +265,7 @@ export interface Scan {
     info_count: number;
     technology_stack: string[];
     agents_enabled: string[];
+    scanned_files?: string[];
     error_message?: string;
     created_at: string;
     started_at?: string;

@@ -3,11 +3,54 @@ Structured logging configuration for the Matrix security scanner.
 
 This module provides a centralized logging setup with consistent formatting,
 context tags, and appropriate log levels for all core components.
+
+Supports two output formats (controlled by LOG_FORMAT env var):
+- "text" (default): Human-readable colored output
+- "json": Machine-parseable JSON for ELK/Splunk/etc.
 """
 import logging
 import sys
-from typing import Optional
+import os
+import json
+from typing import Optional, Dict, Any
 from datetime import datetime, timezone
+
+
+class JSONFormatter(logging.Formatter):
+    """
+    JSON formatter for structured log output.
+    Produces logs parseable by ELK, Splunk, Datadog, etc.
+    """
+    
+    def format(self, record: logging.LogRecord) -> str:
+        """
+        Format the log record as a JSON string.
+        
+        Args:
+            record: The log record to format.
+            
+        Returns:
+            A JSON-formatted log string.
+        """
+        log_data: Dict[str, Any] = {
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "level": record.levelname,
+            "logger": record.name,
+            "message": record.getMessage(),
+            "module": record.module,
+            "function": record.funcName,
+            "line": record.lineno,
+        }
+        
+        # Add exception info if present
+        if record.exc_info:
+            log_data["exception"] = self.formatException(record.exc_info)
+        
+        # Add any extra fields
+        if hasattr(record, "extra_data"):
+            log_data["extra"] = record.extra_data
+        
+        return json.dumps(log_data, default=str)
 
 
 class ColoredFormatter(logging.Formatter):
@@ -127,25 +170,34 @@ class StructuredLogger(logging.Logger):
 
 
 # Configure the logging system
-def setup_logging(level: str = "INFO") -> None:
+def setup_logging(level: str = "INFO", log_format: Optional[str] = None) -> None:
     """
     Configure the global logging system with structured formatting.
     
     Args:
         level: The minimum log level to display (DEBUG, INFO, WARNING, ERROR, CRITICAL).
+        log_format: Output format - "text" (colored) or "json". 
+                    Defaults to LOG_FORMAT env var, then "text".
     """
     # Convert string level to logging constant
     numeric_level = getattr(logging, level.upper(), logging.INFO)
+    
+    # Determine format from arg, env, or default
+    if log_format is None:
+        log_format = os.environ.get("LOG_FORMAT", "text").lower()
     
     # Create console handler
     handler = logging.StreamHandler(sys.stdout)
     handler.setLevel(numeric_level)
     
-    # Create and set formatter
-    formatter = ColoredFormatter(
-        fmt='%(timestamp)s | %(levelname)s | %(context)s %(message)s',
-        datefmt='%Y-%m-%d %H:%M:%S'
-    )
+    # Create formatter based on format choice
+    if log_format == "json":
+        formatter = JSONFormatter()
+    else:
+        formatter = ColoredFormatter(
+            fmt='%(timestamp)s | %(levelname)s | %(context)s %(message)s',
+            datefmt='%Y-%m-%d %H:%M:%S'
+        )
     handler.setFormatter(formatter)
     
     # Configure root logger
@@ -158,6 +210,12 @@ def setup_logging(level: str = "INFO") -> None:
     logging.getLogger('httpx').setLevel(logging.WARNING)
     logging.getLogger('httpcore').setLevel(logging.WARNING)
     logging.getLogger('urllib3').setLevel(logging.WARNING)
+
+
+def get_log_format() -> str:
+    """Get the current log format setting."""
+    return os.environ.get("LOG_FORMAT", "text").lower()
+
 
 
 def get_logger(name: str) -> StructuredLogger:

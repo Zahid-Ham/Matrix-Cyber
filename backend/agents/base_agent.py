@@ -34,7 +34,7 @@ import time
 import logging
 import json
 import re
-from datetime import datetime
+from datetime import datetime, timezone
 from urllib.parse import urlparse
 
 # from core import hf_client
@@ -44,6 +44,9 @@ from core.request_cache import get_request_cache, RequestCache
 from core.evidence_tracker import get_evidence_tracker, EvidenceChain, DetectionMethod
 from core.diff_detector import DiffDetector, ResponseDiff
 from models.vulnerability import Severity, VulnerabilityType
+from config import get_settings
+from scoring import CVSSCalculator, VulnerabilityContext, CVSSResult
+from scoring import ConfidenceCalculator, ConfidenceMethod, ConfidenceFactors
 
 if TYPE_CHECKING:
     from core.scan_context import ScanContext
@@ -69,21 +72,8 @@ class AgentConfig:
     MAX_CACHED_RESPONSE_SIZE = 1000  # Characters to store in evidence
     RESPONSE_SNIPPET_SIZE = 500  # Default snippet size
 
-    # CVSS Scoring
-    CVSS_CRITICAL = 9.5
-    CVSS_HIGH = 7.5
-    CVSS_MEDIUM = 5.5
-    CVSS_LOW = 3.0
-    CVSS_INFO = 0.0
+    # CVSS Scoring constants removed - use CVSSCalculator
 
-    # Severity to Impact Mapping (0-10 scale)
-    SEVERITY_IMPACT_MAP = {
-        Severity.CRITICAL: 9.0,
-        Severity.HIGH: 7.0,
-        Severity.MEDIUM: 5.0,
-        Severity.LOW: 3.0,
-        Severity.INFO: 1.0
-    }
 
     # User Agent
     DEFAULT_USER_AGENT = (
@@ -287,8 +277,13 @@ class AgentResult:
     cwe_id: str = ""
 
     # Metadata
-    detected_at: datetime = field(default_factory=datetime.utcnow)
+    detected_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     cvss_score: Optional[float] = None
+    cvss_vector: Optional[str] = None
+    cvss_metrics: Dict[str, str] = field(default_factory=dict)
+    cvss_justification: Dict[str, str] = field(default_factory=dict)
+    detection_method: str = ""
+    audit_log: List[str] = field(default_factory=list)
 
     # Risk Assessment
     likelihood: float = 0.0
@@ -334,6 +329,9 @@ class AgentResult:
             "cwe_id": self.cwe_id,
             "detected_at": self.detected_at.isoformat(),
             "cvss_score": self.cvss_score,
+            "cvss_vector": self.cvss_vector,
+            "cvss_metrics": self.cvss_metrics,
+            "cvss_justification": self.cvss_justification,
             "likelihood": self.likelihood,
             "impact": self.impact,
             "exploitability_rationale": self.exploitability_rationale,
@@ -422,6 +420,9 @@ class BaseSecurityAgent(ABC):
         self.diff_detector = DiffDetector()
         self.rate_limiter: AdaptiveRateLimiter = get_rate_limiter()
         self.cache: RequestCache = get_request_cache()
+        
+        # CVSS Calculator for context-based scoring
+        self.cvss_calculator = CVSSCalculator()
 
         # Statistics
         self.request_stats = RequestStats()
@@ -558,7 +559,20 @@ class BaseSecurityAgent(ABC):
                 logger.debug(f"{self.agent_name} updated context: {key}")
 
     # ========================================================================
-    # HTTP REQUEST HANDLING
+    # HELPERS
+    # ========================================================================
+    
+    def get_confidence_threshold(self, level: str = "medium") -> float:
+        """Get configurable confidence threshold from settings."""
+        settings = get_settings()
+        if level == "high":
+            return settings.scanner_confidence_threshold_high
+        elif level == "low":
+            return settings.scanner_confidence_threshold_low
+        return settings.scanner_confidence_threshold_medium
+
+    # ========================================================================
+    # HTTP INFRASTRUCTURE
     # ========================================================================
 
     def _validate_url(self, url: str) -> str:
@@ -739,13 +753,22 @@ class BaseSecurityAgent(ABC):
         """Execute HTTP request and report metrics."""
         start_time = time.time()
 
-        response = await self.http_client.request(
-            method=method,
-            url=url,
-            data=data,
-            headers=headers,
-            params=params
-        )
+        try:
+            response = await self.http_client.request(
+                method=method,
+                url=url,
+                data=data,
+                headers=headers,
+                params=params
+            )
+        except AttributeError as e:
+            if "send" in str(e) and "NoneType" in str(e):
+                is_closed = getattr(self.http_client, "is_closed", "Unknown")
+                logger.error(
+                    f"[{self.agent_name}] CRITICAL: 'NoneType' send error. code_client_type={type(self.http_client)}, "
+                    f"is_closed={is_closed}. method={method}, url={url}"
+                )
+            raise e
 
         response_time = time.time() - start_time
 
@@ -827,13 +850,47 @@ class BaseSecurityAgent(ABC):
             score = self.calculate_cvss_score(Severity.HIGH)  # Returns 7.5
         """
         cvss_map = {
-            Severity.CRITICAL: AgentConfig.CVSS_CRITICAL,
-            Severity.HIGH: AgentConfig.CVSS_HIGH,
-            Severity.MEDIUM: AgentConfig.CVSS_MEDIUM,
-            Severity.LOW: AgentConfig.CVSS_LOW,
-            Severity.INFO: AgentConfig.CVSS_INFO
+            Severity.CRITICAL: 9.5,
+            Severity.HIGH: 7.5,
+            Severity.MEDIUM: 5.5,
+            Severity.LOW: 3.0,
+            Severity.INFO: 0.0
         }
         return cvss_map.get(severity, 0.0)
+
+    # ========================================================================
+    # CONFIDENCE SCORING
+    # ========================================================================
+
+    def calculate_confidence(
+        self,
+        method: ConfidenceMethod,
+        evidence_quality: float = 1.0,
+        confirmation_count: int = 0,
+        environmental_relevance: Optional[float] = None,
+        file_path: Optional[str] = None
+    ) -> int:
+        """
+        Calculate deterministic confidence score.
+        Delegates to the central ConfidenceCalculator.
+        """
+        # Auto-calculate environmental relevance if not provided but file_path exists
+        if environmental_relevance is None:
+            environmental_relevance = 1.0
+            if file_path:
+                path_lower = file_path.lower()
+                if any(x in path_lower for x in ['/test/', '\\test\\', 'test_', '_test', '/example/', '/doc/']):
+                    environmental_relevance = 0.5
+                elif any(x in path_lower for x in ['mock', 'stub', 'sample']):
+                    environmental_relevance = 0.3
+
+        factors = ConfidenceFactors(
+            method=method,
+            evidence_quality=evidence_quality,
+            confirmation_count=confirmation_count,
+            environmental_relevance=environmental_relevance
+        )
+        return ConfidenceCalculator.calculate(factors)
 
     # ========================================================================
     # AI ANALYSIS
@@ -899,7 +956,6 @@ class BaseSecurityAgent(ABC):
             Return a JSON object with this exact structure:
             {{
                 "is_vulnerable": boolean,
-                "confidence": integer (0-100),
                 "severity": "CRITICAL"|"HIGH"|"MEDIUM"|"LOW"|"INFO",
                 "title": "Concise Technical Title",
                 "description": "Detailed technical explanation of the finding",
@@ -924,7 +980,6 @@ class BaseSecurityAgent(ABC):
             # Fallback to safe defaults rather than crashing
             return {
                 "is_vulnerable": False, 
-                "confidence": 0, 
                 "severity": "INFO",
                 "title": f"Scan Error: {vulnerability_type}",
                 "description": f"AI analysis failed to process this finding: {str(e)}",
@@ -997,15 +1052,19 @@ class BaseSecurityAgent(ABC):
             likelihood: float = 0.0,
             impact: float = 0.0,
             exploitability_rationale: str = "",
+            detection_method: str = "",
+            audit_log: List[str] = None,
+            vulnerability_context: Optional[VulnerabilityContext] = None,
+            external_cvss_vector: Optional[str] = None,
             **kwargs: Any
     ) -> AgentResult:
         """
-        Create a standardized AgentResult.
+        Create a standardized AgentResult with proper CVSS calculation.
 
         Args:
             vulnerability_type: Type of vulnerability detected
             is_vulnerable: Whether vulnerability was confirmed
-            severity: Severity level
+            severity: Severity level (used as fallback if no context)
             confidence: Confidence score (0-100)
             url: Affected URL
             title: Short vulnerability title
@@ -1013,25 +1072,79 @@ class BaseSecurityAgent(ABC):
             likelihood: Likelihood score (0-10)
             impact: Impact score (0-10)
             exploitability_rationale: Explanation of exploitability
+            vulnerability_context: Context for proper CVSS calculation (recommended)
+            external_cvss_vector: Explicit CVSS vector string to use (overrides calculation)
             **kwargs: Additional fields (evidence, remediation, etc.)
 
         Returns:
-            AgentResult object
+            AgentResult object with calculated CVSS
 
         Example:
+            # With context (recommended)
+            context = VulnerabilityContext(
+                vulnerability_type="sqli",
+                detection_method="error_based",
+                data_exposed=["database"]
+            )
             result = self.create_result(
-                vulnerability_type=VulnerabilityType.XSS_REFLECTED,
+                vulnerability_type=VulnerabilityType.SQL_INJECTION,
                 is_vulnerable=True,
-                severity=Severity.HIGH,
+                severity=Severity.CRITICAL,
                 confidence=95.0,
-                url="https://example.com/search",
-                parameter="q",
-                title="Reflected XSS in Search",
-                description="User input is reflected without encoding",
-                evidence="<script>alert(1)</script> appeared in response",
-                remediation="Encode all user input before displaying"
+                url="https://example.com/api",
+                title="SQL Injection Detected",
+                description="Error-based SQL injection",
+                vulnerability_context=context
             )
         """
+        # Calculate CVSS from context if provided (proper method)
+        cvss_score = None
+        cvss_vector = None
+        cvss_metrics = {}
+        cvss_justification = {}
+        
+        if external_cvss_vector:
+            # Use provided external vector (e.g. from CVE)
+            cvss_result = self.cvss_calculator.parse_vector(external_cvss_vector)
+            cvss_score = cvss_result.score
+            cvss_vector = cvss_result.vector
+            cvss_metrics = cvss_result.metrics
+            cvss_justification = {"Source": "Derived from external CVE vector", **cvss_result.justifications}
+
+            # Override severity based on calculated CVSS score
+            if cvss_score >= 9.0:
+                severity = Severity.CRITICAL
+            elif cvss_score >= 7.0:
+                severity = Severity.HIGH
+            elif cvss_score >= 4.0:
+                severity = Severity.MEDIUM
+            elif cvss_score >= 0.1:
+                severity = Severity.LOW
+            else:
+                severity = Severity.INFO
+
+        elif vulnerability_context:
+            cvss_result = self.cvss_calculator.calculate(vulnerability_context)
+            cvss_score = cvss_result.score
+            cvss_vector = cvss_result.vector
+            cvss_metrics = cvss_result.metrics
+            cvss_justification = cvss_result.justifications
+            
+            # Override severity based on calculated CVSS score
+            if cvss_score >= 9.0:
+                severity = Severity.CRITICAL
+            elif cvss_score >= 7.0:
+                severity = Severity.HIGH
+            elif cvss_score >= 4.0:
+                severity = Severity.MEDIUM
+            elif cvss_score >= 0.1:
+                severity = Severity.LOW
+            else:
+                severity = Severity.INFO
+        else:
+            # Fallback to old severity-based method (deprecated)
+            cvss_score = self.calculate_cvss_score(severity)
+        
         return AgentResult(
             agent_name=self.agent_name,
             vulnerability_type=vulnerability_type,
@@ -1041,10 +1154,15 @@ class BaseSecurityAgent(ABC):
             url=url,
             title=title,
             description=description,
-            cvss_score=self.calculate_cvss_score(severity),
+            cvss_score=cvss_score,
+            cvss_vector=cvss_vector,
+            cvss_metrics=cvss_metrics,
+            cvss_justification=cvss_justification,
             likelihood=likelihood,
             impact=impact,
             exploitability_rationale=exploitability_rationale,
+            detection_method=detection_method,
+            audit_log=audit_log or [],
             **kwargs
         )
 
@@ -1104,7 +1222,15 @@ class BaseSecurityAgent(ABC):
 
         # If impact is still None or was a string, use severity-based default
         if impact is None:
-            impact = AgentConfig.SEVERITY_IMPACT_MAP.get(severity, 5.0)
+            # Fallback based on severity
+            severity_map = {
+                Severity.CRITICAL: 9.0,
+                Severity.HIGH: 7.0,
+                Severity.MEDIUM: 5.0,
+                Severity.LOW: 3.0,
+                Severity.INFO: 1.0
+            }
+            impact = severity_map.get(severity, 5.0)
 
         # Extract exploitability rationale
         exploitability = (
@@ -1116,7 +1242,11 @@ class BaseSecurityAgent(ABC):
             vulnerability_type=vulnerability_type,
             is_vulnerable=ai_analysis.get("is_vulnerable", True),
             severity=severity,
-            confidence=ai_analysis.get("confidence", 85.0),
+            # Use explicit confidence if provided, otherwise default to GENERIC_ERROR_OR_AI with neutral quality
+            confidence=kwargs.pop('confidence', self.calculate_confidence(
+                method=ConfidenceMethod.GENERIC_ERROR_OR_AI,
+                evidence_quality=0.5 # Neutral quality for pure AI guesses
+            )),
             url=url,
             title=title,
             description=description,

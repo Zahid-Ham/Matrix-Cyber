@@ -3,8 +3,9 @@
 import React from 'react';
 import { usePDF } from '@react-pdf/renderer';
 import { FileText, Loader2 } from 'lucide-react';
-import { PDFReport } from './PDFReport';
-import { Scan, Vulnerability } from '../lib/api';
+import { PDFReport } from '@/components/PDFReport';
+import { Scan, Vulnerability } from '@/lib/api';
+import { useMemo } from 'react';
 
 interface ScanPDFExportButtonProps {
     scan: Scan;
@@ -12,7 +13,8 @@ interface ScanPDFExportButtonProps {
 }
 
 const ScanPDFExportButton: React.FC<ScanPDFExportButtonProps> = ({ scan, findings }) => {
-    const [instance, updateInstance] = usePDF({ document: <PDFReport scan={scan} findings={findings} /> });
+    const document = useMemo(() => <PDFReport scan={scan} findings={findings} />, [scan, findings]);
+    const [instance, updateInstance] = usePDF({ document });
 
     if (instance.loading) {
         return (

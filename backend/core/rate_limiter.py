@@ -423,22 +423,29 @@ class AdaptiveRateLimiter:
             logger.info(f"Reset rate limiter state for all {num_hosts} hosts")
 
 
-# Global rate limiter instance
-_global_rate_limiter: Optional[AdaptiveRateLimiter] = None
+# Lazy initialization for multi-loop environments
+class LazyRateLimiter:
+    def __init__(self):
+        self._instance: Optional[AdaptiveRateLimiter] = None
+        
+    def _get_instance(self) -> AdaptiveRateLimiter:
+        if self._instance is None:
+            self._instance = AdaptiveRateLimiter()
+        return self._instance
+        
+    def __getattr__(self, name):
+        return getattr(self._get_instance(), name)
+
+    def force_reset(self):
+        """Reset instance to allow re-initialization in new loop."""
+        self._instance = None
+
+_global_rate_limiter = LazyRateLimiter()
 
 
 def get_rate_limiter() -> AdaptiveRateLimiter:
-    """
-    Get the global rate limiter instance.
-    
-    Returns:
-        Global AdaptiveRateLimiter instance
-    """
-    global _global_rate_limiter
-    if _global_rate_limiter is None:
-        _global_rate_limiter = AdaptiveRateLimiter()
-        logger.debug("Created global rate limiter instance")
-    return _global_rate_limiter
+    """Get the global rate limiter instance."""
+    return _global_rate_limiter._get_instance()
 
 
 def configure_rate_limiter(config: RateLimiterConfig) -> None:

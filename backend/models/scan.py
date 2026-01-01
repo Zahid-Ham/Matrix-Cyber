@@ -24,11 +24,11 @@ class AuditMixin:
     """Enhanced mixin with soft delete and audit capabilities."""
     
     # Soft delete support
-    deleted_at = Column(DateTime, nullable=True, index=True)
+    deleted_at = Column(DateTime(timezone=True), nullable=True, index=True)
     
     # Audit timestamps
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
-    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), 
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), 
                        onupdate=lambda: datetime.now(timezone.utc), nullable=False)
     
     @hybrid_property
@@ -160,15 +160,27 @@ class Scan(Base, AuditMixin):
     warnings = Column(JSON, default=list)
     
     # Timestamps
-    started_at = Column(DateTime, nullable=True, index=True)
-    completed_at = Column(DateTime, nullable=True, index=True)
-    paused_at = Column(DateTime, nullable=True)
-    resumed_at = Column(DateTime, nullable=True)
+    started_at = Column(DateTime(timezone=True), nullable=True, index=True)
+    completed_at = Column(DateTime(timezone=True), nullable=True, index=True)
+    paused_at = Column(DateTime(timezone=True), nullable=True)
+    resumed_at = Column(DateTime(timezone=True), nullable=True)
     
     # Compliance & Reporting
     compliance_frameworks = Column(JSON, default=list)  # ["OWASP", "PCI-DSS", ...]
     report_generated = Column(Boolean, default=False)
     report_path = Column(String(512), nullable=True)
+    
+    # Scanned files list
+    scanned_files = Column(JSON, default=lambda: [])
+    
+    # ========================================================================
+    # ADVANCED TESTING OPTIONS (Default: OFF for legal/ethical compliance)
+    # ========================================================================
+    # WAF Evasion: DISABLED by default. Only enable with explicit user consent.
+    # This may trigger security alerts and may be considered malicious.
+    enable_waf_evasion = Column(Boolean, default=False, index=True)
+    waf_evasion_consent = Column(Boolean, default=False)  # User acknowledged risks
+    waf_evasion_consent_at = Column(DateTime(timezone=True), nullable=True)  # When consent was given
     
     # Relationships
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
@@ -437,6 +449,7 @@ class Scan(Base, AuditMixin):
         result['is_active'] = self.is_active
         result['is_complete'] = self.is_complete
         result['success_rate'] = self.success_rate
+        result['scanned_files'] = self.scanned_files or []
         
         if include_relationships:
             result['vulnerabilities'] = [

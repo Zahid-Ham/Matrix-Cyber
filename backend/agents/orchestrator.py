@@ -9,7 +9,7 @@ import asyncio
 import logging
 import re
 from typing import List, Dict, Any, Optional, Set, Callable, TypedDict
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from difflib import SequenceMatcher
 from dataclasses import dataclass, field
@@ -44,6 +44,7 @@ class AgentNames:
     XSS = "xss"
     CSRF = "csrf"
     SSRF = "ssrf"
+    SECURITY_HEADERS = "security_headers"
     COMMAND_INJECTION = "command_injection"
 
 
@@ -657,19 +658,20 @@ class AgentOrchestrator:
         """
         is_github_target = "github.com" in target_url
 
+        # Auto-select based on target type
+        if is_github_target:
+            logger.info("GitHub target detected - forcing GitHub Security Agent only")
+            return [AgentNames.GITHUB] if AgentNames.GITHUB in self.agents else []
+        
         if agents_enabled is not None:
             # Use explicitly enabled agents
             return [name for name in agents_enabled if name in self.agents]
 
-        # Auto-select based on target type
-        if is_github_target:
-            return [AgentNames.GITHUB] if AgentNames.GITHUB in self.agents else []
-        else:
-            # Run all non-GitHub agents for web targets
-            return [
-                name for name in self.agents.keys()
-                if name != AgentNames.GITHUB
-            ]
+        # Default for web targets: Run all non-GitHub agents
+        return [
+            name for name in self.agents.keys()
+            if name != AgentNames.GITHUB
+        ]
 
     def _route_endpoints_for_agent(
             self,
@@ -1035,7 +1037,7 @@ class AgentOrchestrator:
                 self.failed_agents.append({
                     "agent": agent_name,
                     "error": str(result),
-                    "timestamp": datetime.utcnow().isoformat()
+                    "timestamp": datetime.now(timezone.utc).isoformat()
                 })
             elif isinstance(result, list):
                 results.append(result)
@@ -1563,6 +1565,10 @@ class AgentOrchestrator:
         gates_failed = 0
         gate_details = []
 
+        # Bypass gates for pre-verified dependency vulnerabilities
+        if result.vulnerability_type == VulnerabilityType.VULNERABLE_DEPENDENCY:
+            return 0, []
+
         # Gate 1: User Interaction Required
         if self._requires_user_interaction(result):
             gates_failed += 1
@@ -1871,10 +1877,27 @@ class AgentOrchestrator:
         if result1.vulnerability_type != result2.vulnerability_type:
             return 0.0
 
+        # Special handling for vulnerable dependencies - must be same package/title
+        if result1.vulnerability_type == VulnerabilityType.VULNERABLE_DEPENDENCY:
+            # Titles contain package name and summary - must be high similarity
+            title_sim = SequenceMatcher(None, result1.title, result2.title).ratio()
+            if title_sim < 0.9:
+                return 0.0
+
         # Compare URLs
-        url_similarity = SequenceMatcher(
-            None, result1.url, result2.url
-        ).ratio()
+        url1, url2 = result1.url, result2.url
+        url_similarity = SequenceMatcher(None, url1, url2).ratio()
+
+        # Explicit path sensitivity - if repo paths differ, they are not similar
+        if "github.com" in url1 and "github.com" in url2:
+            try:
+                # Extract path after /blob/branch/
+                path1 = url1.split('/blob/')[1].split('/', 1)[1].split('#')[0]
+                path2 = url2.split('/blob/')[1].split('/', 1)[1].split('#')[0]
+                if path1 != path2:
+                    return 0.0
+            except (IndexError, AttributeError):
+                pass
 
         # Compare parameters
         param_similarity = self._compare_parameters(result1, result2)
@@ -2158,9 +2181,16 @@ class AgentOrchestrator:
         logger.info("Scan cancellation requested")
 
     async def cleanup(self) -> None:
-        """Clean up resources."""
+        """Clean up resources by closing all registered agents."""
         self.is_running = False
-        logger.info("Cleanup complete (singleton state preserved)")
+        logger.info(f"Cleaning up orchestrator and {len(self.agents)} agents...")
+        
+        # Close all agents concurrently
+        tasks = [agent.close() for agent in self.agents.values()]
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
+            
+        logger.info("Cleanup complete (all agent clients closed)")
 
     def get_summary(self) -> Dict[str, Any]:
         """

@@ -1,0 +1,26 @@
+[
+    {
+        "scenario": "baseline",
+        "endpoint_count": 1,
+        "duration_seconds": 0.031,
+        "per_endpoint_ms": 31.473
+    },
+    {
+        "scenario": "typical",
+        "endpoint_count": 10,
+        "duration_seconds": 0.021,
+        "per_endpoint_ms": 2.063
+    },
+    {
+        "scenario": "stress",
+        "endpoint_count": 100,
+        "duration_seconds": 0.123,
+        "per_endpoint_ms": 1.234
+    },
+    {
+        "scenario": "extreme",
+        "endpoint_count": 1000,
+        "duration_seconds": 1.018,
+        "per_endpoint_ms": 1.018
+    }
+]

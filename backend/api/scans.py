@@ -53,6 +53,28 @@ async def create_scan(
     if not target_url.startswith(("http://", "https://")):
         target_url = f"http://{target_url}"
     
+    # Validate WAF evasion consent
+    # WAF evasion requires explicit consent acknowledgment
+    enable_waf_evasion = False
+    waf_consent_at = None
+    
+    if scan_data.enable_waf_evasion:
+        if not scan_data.waf_evasion_consent:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    "WAF evasion requires explicit consent. "
+                    "You must acknowledge the risks by setting waf_evasion_consent=true. "
+                    "WARNING: This may trigger security alerts on target systems."
+                )
+            )
+        enable_waf_evasion = True
+        waf_consent_at = datetime.now(timezone.utc)
+        logger.warning(
+            f"WAF evasion ENABLED for scan by user {current_user.id} - consent given",
+            extra={"target": target_url, "user_id": current_user.id}
+        )
+    
     # Create scan record
     new_scan = Scan(
         target_url=target_url,
@@ -61,6 +83,9 @@ async def create_scan(
         agents_enabled=scan_data.agents_enabled,
         user_id=current_user.id,
         status=ScanStatus.PENDING,
+        enable_waf_evasion=enable_waf_evasion,
+        waf_evasion_consent=scan_data.waf_evasion_consent,
+        waf_evasion_consent_at=waf_consent_at,
     )
     
     db.add(new_scan)
@@ -84,6 +109,7 @@ async def create_scan(
         logger.info(f"Scan {new_scan.id} queued via BackgroundTasks (fallback)")
     
     return ScanResponse.model_validate(new_scan)
+
 
 
 
@@ -118,8 +144,16 @@ async def list_scans(
     result = await db.execute(query)
     scans = result.scalars().all()
     
+    # Explicitly handle scanned_files for each scan
+    scan_responses = []
+    for scan in scans:
+        response = ScanResponse.model_validate(scan)
+        if hasattr(scan, 'scanned_files') and scan.scanned_files is not None:
+            response.scanned_files = scan.scanned_files
+        scan_responses.append(response)
+    
     return ScanListResponse(
-        items=[ScanResponse.model_validate(scan) for scan in scans],
+        items=scan_responses,
         total=total,
         page=page,
         size=size,
@@ -127,7 +161,7 @@ async def list_scans(
     )
 
 
-@router.get("/{scan_id}", response_model=ScanResponse)
+@router.get("/{scan_id}/", response_model=ScanResponse)
 async def get_scan(
     scan_id: int,
     current_user: User = Depends(get_current_user),
@@ -145,10 +179,15 @@ async def get_scan(
             detail="Scan not found"
         )
     
-    return ScanResponse.model_validate(scan)
+    # Create response with explicit scanned_files handling
+    response_data = ScanResponse.model_validate(scan)
+    # Ensure scanned_files is populated from the database model
+    if hasattr(scan, 'scanned_files') and scan.scanned_files is not None:
+        response_data.scanned_files = scan.scanned_files
+    return response_data
 
 
-@router.delete("/{scan_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{scan_id}/", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_scan(
     scan_id: int,
     current_user: User = Depends(get_current_user),
@@ -170,7 +209,7 @@ async def delete_scan(
     await db.commit()
 
 
-@router.post("/{scan_id}/start", response_model=ScanResponse)
+@router.post("/{scan_id}/start/", response_model=ScanResponse)
 async def start_scan(
     scan_id: int,
     background_tasks: BackgroundTasks,
@@ -222,7 +261,7 @@ async def start_scan(
 
 
 
-@router.post("/{scan_id}/cancel", response_model=ScanResponse)
+@router.post("/{scan_id}/cancel/", response_model=ScanResponse)
 async def cancel_scan(
     scan_id: int,
     current_user: User = Depends(get_current_user),

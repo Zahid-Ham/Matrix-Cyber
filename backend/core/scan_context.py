@@ -79,6 +79,7 @@ class ScanContext:
     session_tokens: List[SessionToken] = field(default_factory=list)
     discovered_endpoints: List[Dict[str, Any]] = field(default_factory=list)
     technology_stack: List[str] = field(default_factory=list)
+    scanned_files: List[str] = field(default_factory=list)
     
     # Security findings shared between agents
     confirmed_vulnerabilities: List[str] = field(default_factory=list)
@@ -92,9 +93,54 @@ class ScanContext:
     security_headers: Dict[str, str] = field(default_factory=dict)
     csp_policy: Optional[str] = None
     
+    # ========================================================================
+    # ADVANCED TESTING OPTIONS (Default: OFF for legal/ethical compliance)
+    # ========================================================================
+    # WAF Evasion: DISABLED by default. Only enable with explicit user consent.
+    # This feature may trigger security alerts and may be considered malicious
+    # by target systems, ISPs, or legal authorities.
+    enable_waf_evasion: bool = False
+    waf_evasion_consent_given: bool = False  # User explicitly acknowledged risks
+    waf_evasion_consent_timestamp: Optional[datetime] = None
+    
     # Metadata - UPDATED to use timezone-aware datetime
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    
+    def enable_advanced_waf_evasion(self, consent_acknowledged: bool = False) -> bool:
+        """
+        Enable WAF evasion techniques for this scan.
+        
+        CAUTION: This feature may trigger security alerts on target systems.
+        Only use for authorized penetration testing with explicit permission.
+        
+        Args:
+            consent_acknowledged: User must explicitly acknowledge the risks
+            
+        Returns:
+            True if WAF evasion was enabled, False if consent not given
+        """
+        if not consent_acknowledged:
+            logger.warning(
+                "WAF evasion NOT enabled - user consent required",
+                extra={"scan_id": self.scan_id}
+            )
+            return False
+        
+        self.enable_waf_evasion = True
+        self.waf_evasion_consent_given = True
+        self.waf_evasion_consent_timestamp = datetime.now(timezone.utc)
+        self.updated_at = datetime.now(timezone.utc)
+        
+        logger.warning(
+            "WAF evasion ENABLED - user acknowledged risks",
+            extra={
+                "scan_id": self.scan_id,
+                "consent_timestamp": self.waf_evasion_consent_timestamp.isoformat()
+            }
+        )
+        return True
+
     
     def add_credential(
         self,

@@ -54,11 +54,6 @@ module.exports = {
             backdropBlur: {
                 'glass': '20px',
             },
-            animation: {
-                'fade-in': 'fadeIn 0.5s ease-out',
-                'slide-up': 'slideUp 0.5s ease-out',
-                'pulse-soft': 'pulseSoft 2s ease-in-out infinite',
-            },
             keyframes: {
                 fadeIn: {
                     '0%': { opacity: '0' },

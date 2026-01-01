@@ -21,26 +21,13 @@ import { SpiderWeb } from '../../components/SpiderWeb';
 import { Navbar } from '../../components/Navbar';
 import { useAuth } from '../../context/AuthContext';
 import { api, Scan, Vulnerability } from '../../lib/api';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
-const MOCK_FILES = [
-    'backend/main.py',
-    'backend/agents/github_agent.py',
-    'backend/core/openrouter_client.py',
-    'backend/config.py',
-    'backend/api/vulnerabilities.py',
-    'frontend/app/repo/page.tsx',
-    'frontend/app/hub/page.tsx',
-    'backend/workers.py',
-    'backend/models/scan.py',
-    '.env.example',
-    'requirements.txt',
-    'package.json'
-];
+import { Suspense } from 'react';
 
-export default function RepoAnalysisPage() {
+function RepoAnalysisContent() {
     const { isAuthenticated } = useAuth();
     const router = useRouter();
     const [repoUrl, setRepoUrl] = useState('');
@@ -54,10 +41,147 @@ export default function RepoAnalysisPage() {
     const [progress, setProgress] = useState(0);
     const [stats, setStats] = useState({ high: 0, secrets: 0, files: 0 });
     const [vulnerableFiles, setVulnerableFiles] = useState<{ file: string, issues: number, severity: string }[]>([]);
+    const [scannedFiles, setScannedFiles] = useState<string[]>([]);
     const [scanId, setScanId] = useState<number | null>(null);
+
     const [isThinking, setIsThinking] = useState(false);
     const chatEndRef = useRef<HTMLDivElement>(null);
     const logsEndRef = useRef<HTMLDivElement>(null);
+    const searchParams = useSearchParams();
+    const urlParam = searchParams.get('url');
+    const scanIdParam = searchParams.get('scan_id');
+
+    useEffect(() => {
+        if (urlParam) {
+            setRepoUrl(urlParam);
+        }
+        if (scanIdParam) {
+            restoreScanContext(parseInt(scanIdParam));
+        }
+    }, [urlParam, scanIdParam]);
+
+    const processFindings = (findings: Vulnerability[]) => {
+        const critical = findings.filter(f => f.severity === 'critical').length;
+        const high = findings.filter(f => f.severity === 'high').length;
+        const secrets = findings.filter(f => f.vulnerability_type === 'secret_exposure').length;
+
+        // Update Stats State
+        setStats({
+            files: findings.length > 0 ? Array.from(new Set(findings.map(f => f.file_path))).length : 0,
+            high: high + critical,
+            secrets: secrets
+        });
+
+        // Calculate Top Vulnerable Files
+        const fileCountMap: Record<string, { issues: number, severity: string }> = {};
+        findings.forEach(f => {
+            const path = f.file_path || 'Security Headers / Config';
+            const sev = (f.severity || 'info').toLowerCase();
+            if (!fileCountMap[path]) {
+                fileCountMap[path] = { issues: 0, severity: sev };
+            }
+            fileCountMap[path].issues += 1;
+            // Keep the highest severity
+            const severityOrder = { 'critical': 3, 'high': 2, 'medium': 1, 'low': 0, 'info': 0 };
+            const currentHighest = (fileCountMap[path].severity || 'info').toLowerCase();
+            if (severityOrder[sev as keyof typeof severityOrder] > severityOrder[currentHighest as keyof typeof severityOrder]) {
+                fileCountMap[path].severity = sev;
+            }
+        });
+
+        const sortedFiles = Object.entries(fileCountMap)
+            .map(([file, data]) => ({ file, ...data }))
+            .sort((a, b) => b.issues - a.issues)
+            .slice(0, 3);
+
+        setVulnerableFiles(sortedFiles);
+
+        // Construct summary message
+        const summary = `Audit complete! I found ${findings.length} issues in total.\n` +
+            `- Critical: ${critical}\n` +
+            `- High: ${high}\n` +
+            `- Secrets: ${secrets}\n\n` +
+            `You can ask me about specific findings or remediation steps.`;
+
+        return summary;
+    };
+
+    const restoreScanContext = async (id: number) => {
+        try {
+            setIsAnalyzing(true);
+            const scanData = await api.getScan(id);
+            setScanId(id);
+            setRepoUrl(scanData.target_url);
+
+            if (scanData.status === 'completed') {
+                const vulnResponse = await api.getVulnerabilities(id);
+                const findings = vulnResponse.items;
+                const summary = processFindings(findings);
+
+                setAuditLogs([
+                    '[SYSTEM] Restoring previous analysis session...',
+                    `[INFO] Target: ${scanData.target_url}`,
+                    '[SUCCESS] Analysis state recovered.'
+                ]);
+                setMessages([
+                    { role: 'assistant', content: summary }
+                ]);
+                setScannedFiles(scanData.scanned_files || []);
+                setProgress(100);
+                setIsAuditDone(true);
+                setIsAnalyzing(false);
+            } else if (scanData.status === 'running') {
+                // Not standard for "back" button but good for robustness
+                setAuditLogs(['[SYSTEM] Re-attaching to active scan session...']);
+                startPolling(id);
+            } else {
+                setIsAnalyzing(false);
+            }
+        } catch (e) {
+            console.error("Restore error", e);
+            setIsAnalyzing(false);
+        }
+    };
+
+    const startPolling = (id: number) => {
+        const interval = setInterval(async () => {
+            try {
+                const statusUpdate = await api.getScan(id);
+                setProgress(statusUpdate.progress);
+
+                // Update scanned files real-time during polling
+                if (statusUpdate.scanned_files && statusUpdate.scanned_files.length > 0) {
+                    setScannedFiles(statusUpdate.scanned_files);
+                }
+
+                if (statusUpdate.status === 'completed') {
+                    clearInterval(interval);
+                    setIsAnalyzing(false);
+                    setIsAuditDone(true);
+                    setAuditLogs(prev => [...prev, '[SUCCESS] Analysis completed successfully.', '[SYSTEM] Fetching findings...']);
+
+                    const vulnResponse = await api.getVulnerabilities(id);
+                    const summary = processFindings(vulnResponse.items);
+                    setScannedFiles(statusUpdate.scanned_files || []);
+
+                    setMessages(prevMsg => [...prevMsg, {
+                        role: 'assistant',
+                        content: summary
+                    }]);
+                } else if (statusUpdate.status === 'failed' || statusUpdate.status === 'cancelled') {
+                    clearInterval(interval);
+                    setIsAnalyzing(false);
+                    setAuditLogs(prev => [...prev, `[ERROR] Scan failed: ${statusUpdate.error_message}`]);
+                    setMessages(prevMsg => [...prevMsg, {
+                        role: 'assistant',
+                        content: `Analysis failed: ${statusUpdate.error_message}. Please check the URL and try again.`
+                    }]);
+                }
+            } catch (e) {
+                console.error("Poll error", e);
+            }
+        }, 2000);
+    };
 
     const scrollToBottom = () => {
         chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -95,93 +219,14 @@ export default function RepoAnalysisPage() {
             // 1. Create Scan
             const scan = await api.createScan({
                 target_url: repoUrl,
-                scan_type: 'GITHUB_SAST',
+                scan_type: 'github_sast',
                 agents_enabled: ['github_security', 'api_security', 'xss']
             });
             setScanId(scan.id);
             setAuditLogs(prev => [...prev, `[INFO] Scan job created (ID: ${scan.id})`]);
 
             // 2. Poll for Status
-            const interval = setInterval(async () => {
-                try {
-                    const statusUpdate = await api.getScan(scan.id);
-                    setProgress(statusUpdate.progress);
-
-                    // Add dynamic logs based on progress/status (simplified)
-                    if (statusUpdate.status === 'running') {
-                        // We could poll recent logs if the backend exposed them, for now just show progress
-                    }
-
-                    if (statusUpdate.status === 'completed') {
-                        clearInterval(interval);
-                        setIsAnalyzing(false);
-                        setIsAuditDone(true);
-                        setAuditLogs(prev => [...prev, '[SUCCESS] Analysis completed successfully.', '[SYSTEM] Fetching findings...']);
-
-                        // 3. Get Findings
-                        const vulnResponse = await api.getVulnerabilities(scan.id);
-                        const findings = vulnResponse.items;
-                        const critical = findings.filter(f => f.severity === 'critical').length;
-                        const high = findings.filter(f => f.severity === 'high').length;
-                        const secrets = findings.filter(f => f.vulnerability_type === 'secret_exposure').length;
-
-                        // Update Stats State
-                        setStats({
-                            files: findings.length > 0 ? Array.from(new Set(findings.map(f => f.file_path))).length : 0,
-                            high: high + critical,
-                            secrets: secrets
-                        });
-
-                        // Calculate Top Vulnerable Files
-                        const fileCountMap: Record<string, { issues: number, severity: string }> = {};
-                        findings.forEach(f => {
-                            const path = f.file_path || 'Security Headers / Config';
-                            if (!fileCountMap[path]) {
-                                fileCountMap[path] = { issues: 0, severity: f.severity };
-                            }
-                            fileCountMap[path].issues += 1;
-                            // Keep the highest severity
-                            const severityOrder = { 'critical': 3, 'high': 2, 'medium': 1, 'low': 0, 'info': 0 };
-                            if (severityOrder[f.severity as keyof typeof severityOrder] > severityOrder[fileCountMap[path].severity as keyof typeof severityOrder]) {
-                                fileCountMap[path].severity = f.severity;
-                            }
-                        });
-
-                        const sortedFiles = Object.entries(fileCountMap)
-                            .map(([file, data]) => ({ file, ...data }))
-                            .sort((a, b) => b.issues - a.issues)
-                            .slice(0, 3);
-
-                        setVulnerableFiles(sortedFiles);
-
-                        // Construct summary message
-                        const summary = `Audit complete! I found ${findings.length} issues in total.\n` +
-                            `- Critical: ${critical}\n` +
-                            `- High: ${high}\n` +
-                            `- Secrets: ${secrets}\n\n` +
-                            `You can ask me about specific findings or remediation steps.`;
-
-                        setMessages(prevMsg => [...prevMsg, {
-                            role: 'assistant',
-                            content: summary
-                        }]);
-
-                        // Update the "Stats" in the UI (currently hardcoded in JSX) via state if needed
-                        // For now we just update the chat.
-
-                    } else if (statusUpdate.status === 'failed' || statusUpdate.status === 'cancelled') {
-                        clearInterval(interval);
-                        setIsAnalyzing(false);
-                        setAuditLogs(prev => [...prev, `[ERROR] Scan failed: ${statusUpdate.error_message}`]);
-                        setMessages(prevMsg => [...prevMsg, {
-                            role: 'assistant',
-                            content: `Analysis failed: ${statusUpdate.error_message}. Please check the URL and try again.`
-                        }]);
-                    }
-                } catch (e) {
-                    console.error("Poll error", e);
-                }
-            }, 2000);
+            startPolling(scan.id);
 
         } catch (error: any) {
             setIsAnalyzing(false);
@@ -277,7 +322,7 @@ export default function RepoAnalysisPage() {
                         )}
                     </div>
 
-                    <div className="flex-1 min-h-0">
+                    <div className="flex-1 min-0">
                         {!isAuditDone ? (
                             /* PHASE 1: LOGS VIEW */
                             <div className={`glass-card h-full flex flex-col p-6 animate-fade-in`}>
@@ -351,6 +396,23 @@ export default function RepoAnalysisPage() {
                                         View Full Source Report
                                     </button>
                                 </div>
+
+                                {scannedFiles.length > 0 && (
+                                    <div className="glass-card p-6 space-y-4 max-h-[300px] flex flex-col">
+                                        <div className="flex items-center justify-between mb-4">
+                                            <h3 className="font-serif font-medium text-lg text-text-primary">Scanned Repository Files</h3>
+                                            <FileCode className="w-4 h-4 text-text-muted" />
+                                        </div>
+                                        <div className="flex-1 overflow-y-auto space-y-2 pr-2 scrollbar-thin">
+                                            {scannedFiles.map((file, i) => (
+                                                <div key={i} className="flex items-center gap-3 p-2 hover:bg-warm-50 rounded transition-colors border-b border-warm-100 last:border-0">
+                                                    <span className="text-[10px] opacity-30 font-mono">{String(i + 1).padStart(2, '0')}</span>
+                                                    <span className="text-[11px] font-mono text-text-muted truncate">{file}</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         )}
                     </div>
@@ -391,12 +453,34 @@ export default function RepoAnalysisPage() {
 
                         {/* Analysis Status Overlay */}
                         {isAnalyzing && (
-                            <div className="absolute inset-0 flex items-center justify-center z-20 bg-white/10 backdrop-blur-[2px]">
-                                <div className="flex flex-col items-center gap-4 p-8 glass-card border-accent-primary animate-pulse">
-                                    <div className="w-12 h-12 border-4 border-accent-primary border-t-transparent rounded-full animate-spin" />
-                                    <div className="text-xl font-serif text-text-primary">Auditing Assets...</div>
-                                    <div className="text-xs font-bold uppercase tracking-widest text-accent-primary">{progress}%</div>
+                            <div className="absolute inset-0 flex flex-col z-20 bg-white/10 backdrop-blur-[2px]">
+                                <div className="flex-1 flex flex-col items-center justify-center p-8">
+                                    <div className="flex flex-col items-center gap-4 p-8 glass-card border-accent-primary animate-pulse w-full max-w-sm">
+                                        <div className="w-12 h-12 border-4 border-accent-primary border-t-transparent rounded-full animate-spin" />
+                                        <div className="text-xl font-serif text-text-primary">Auditing Assets...</div>
+                                        <div className="text-xs font-bold uppercase tracking-widest text-accent-primary">{progress}%</div>
+                                    </div>
                                 </div>
+
+                                {scannedFiles.length > 0 && (
+                                    <div className="p-6 bg-white/80 backdrop-blur-md border-t border-warm-200 animate-slide-up h-[40%] flex flex-col">
+                                        <div className="flex items-center justify-between mb-4">
+                                            <div className="flex items-center gap-2">
+                                                <FileCode className="w-4 h-4 text-accent-primary" />
+                                                <h3 className="font-serif font-medium text-text-primary">Live Audit Manifest</h3>
+                                            </div>
+                                            <span className="text-[10px] uppercase font-bold tracking-widest text-text-muted">{scannedFiles.length} files queued</span>
+                                        </div>
+                                        <div className="flex-1 overflow-y-auto space-y-2 pr-2 scrollbar-thin">
+                                            {scannedFiles.map((file, i) => (
+                                                <div key={i} className="flex items-center gap-3 p-2 hover:bg-warm-50 rounded transition-colors border-b border-warm-100 last:border-0 bg-white/50">
+                                                    <span className="text-[10px] opacity-30 font-mono">{String(i + 1).padStart(2, '0')}</span>
+                                                    <span className="text-[11px] font-mono text-text-muted truncate">{file}</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         )}
 
@@ -416,7 +500,7 @@ export default function RepoAnalysisPage() {
                             <div className="flex-1 overflow-y-auto p-6 space-y-6 bg-matrix-pattern">
                                 {messages.map((msg, i) => (
                                     <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                                        <div className={`max-w-[85%] p-4 rounded-right-none ${msg.role === 'user'
+                                        <div className={`max-w-[85%] p-4 rounded-r-none ${msg.role === 'user'
                                             ? 'bg-accent-primary text-white ml-12 rounded-2xl rounded-tr-none shadow-md'
                                             : 'bg-white border border-warm-200 text-text-primary mr-12 rounded-2xl rounded-tl-none shadow-sm'
                                             }`}>
@@ -498,5 +582,20 @@ export default function RepoAnalysisPage() {
                 </div>
             </main>
         </div>
+    );
+}
+
+export default function RepoAnalysisPage() {
+    return (
+        <Suspense fallback={
+            <div className="min-h-screen bg-bg-primary flex items-center justify-center">
+                <div className="text-center animate-pulse">
+                    <Cpu className="w-12 h-12 text-accent-primary mx-auto mb-4" />
+                    <p className="text-text-muted font-serif">Loading Matrix SAST Engine...</p>
+                </div>
+            </div>
+        }>
+            <RepoAnalysisContent />
+        </Suspense>
     );
 }

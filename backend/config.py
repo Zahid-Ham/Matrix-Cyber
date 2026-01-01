@@ -12,15 +12,17 @@ class Settings(BaseSettings):
     app_name: str = "Matrix"
     debug: bool = True
     
-    # AI
-    # LLM Cost Optimization
-    enable_llm_cache: bool = True
-    llm_cache_ttl_hours: int = 24
     # LLM Cost Optimization
     enable_llm_cache: bool = True
     llm_cache_ttl_hours: int = 24
     
-    # Groq (LPU)
+    # Scanner Confidence Thresholds
+    scanner_confidence_threshold_high: float = 80.0
+    scanner_confidence_threshold_medium: float = 50.0
+    scanner_confidence_threshold_low: float = 20.0
+    
+    enable_audit_mode: bool = False
+    
     # Groq (LPU)
     groq_api_key: str = ""  # Deprecated (legacy)
     groq_api_key_scanner: str = ""
@@ -50,8 +52,9 @@ class Settings(BaseSettings):
     # GitHub
     github_token: str = ""
     
-    # Database
-    database_url: str = "sqlite+aiosqlite:///./matrix.db"
+    # Database - loaded from DATABASE_URL env var, falls back to PostgreSQL default
+    # For SQLite (dev only): sqlite+aiosqlite:///./matrix.db
+    database_url: str = "postgresql+asyncpg://matrix:matrix_secure_pass@localhost:5432/matrix"
     
     # JWT Authentication
     secret_key: str = "change-this-in-production"

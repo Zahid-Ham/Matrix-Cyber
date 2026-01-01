@@ -22,6 +22,7 @@ from enum import Enum
 
 from .base_agent import BaseSecurityAgent, AgentResult
 from models.vulnerability import Severity, VulnerabilityType
+from scoring import VulnerabilityContext, ConfidenceMethod
 # Configure logging
 logger = logging.getLogger(__name__)
 
@@ -311,6 +312,37 @@ class CommandInjectionAgent(BaseSecurityAgent):
         logger.info(f"[{self.agent_name}] Scan complete. Found {len(results)} vulnerabilities")
         return results
 
+    def _build_command_injection_context(
+            self,
+            url: str,
+            method: str,
+            param_name: str,
+            payload: str,
+            description: str,
+            detection_method: str = "command_injection_probe"
+    ) -> VulnerabilityContext:
+        """Build VulnerabilityContext for command injection."""
+        return VulnerabilityContext(
+            vulnerability_type="os_command_injection",
+            detection_method=detection_method,
+            endpoint=url,
+            parameter=param_name,
+            http_method=method,
+            # Command injection typically allows full system compromise
+            escapes_security_boundary=True,
+            can_execute_os_commands=True,
+            data_exposed=["system_level_access", "all_data", "environment_variables"],
+            data_modifiable=["system_files", "configuration", "all_data"],
+            service_disruption_possible=True,
+            # Usually requires no interaction if in an API/parameter
+            requires_user_interaction=False,
+            payload_succeeded=True,
+            additional_context={
+                "payload": payload,
+                "description": description
+            }
+        )
+
     def _detect_windows_target(
             self,
             technology_stack: Optional[List[str]],
@@ -439,9 +471,20 @@ class CommandInjectionAgent(BaseSecurityAgent):
                     response_data=response.text[:1500]
                 )
 
-                confidence = min(
-                    ai_analysis.get("confidence", 85),
-                    verification["confidence"]
+                confidence = self.calculate_confidence(
+                    ConfidenceMethod.SPECIFIC_ERROR,
+                    evidence_quality=verification["confidence"] / 100.0,
+                    confirmation_count=len(found_indicators)
+                )
+
+                # Build context for proper CVSS scoring
+                context = self._build_command_injection_context(
+                    url=url,
+                    method=method,
+                    param_name=param_name,
+                    payload=payload_test.payload,
+                    description=payload_test.description,
+                    detection_method="error_based_command_injection"
                 )
 
                 return self.create_result(
@@ -458,6 +501,7 @@ class CommandInjectionAgent(BaseSecurityAgent):
                         f"An attacker can execute arbitrary system commands on the server. "
                         f"Injection context: {payload_test.context.value}"
                     ),
+                    vulnerability_context=context,
                     evidence=(
                         f"Payload: {payload_test.payload}\n"
                         f"Description: {payload_test.description}\n"
@@ -560,11 +604,24 @@ class CommandInjectionAgent(BaseSecurityAgent):
 
             avg_confidence = statistics.mean([c[0].confidence for c in confirmations])
 
+            # Build context for proper CVSS scoring
+            vuln_context = self._build_command_injection_context(
+                url=url,
+                method=method,
+                param_name=param_name,
+                payload=payload,
+                description=description,
+                detection_method="time_based_command_injection"
+            )
+
             return self.create_result(
                 vulnerability_type=VulnerabilityType.OS_COMMAND_INJECTION,
                 is_vulnerable=True,
                 severity=Severity.CRITICAL,
-                confidence=int(avg_confidence * 100),
+                confidence=self.calculate_confidence(
+                    ConfidenceMethod.CONFIRMED_EXPLOIT if len(confirmations) >= 3 else ConfidenceMethod.LOGIC_MATCH,
+                    evidence_quality=avg_confidence
+                ),
                 url=url,
                 parameter=param_name,
                 method=method,
@@ -574,6 +631,7 @@ class CommandInjectionAgent(BaseSecurityAgent):
                     f"Confirmed via statistical time-based analysis with {len(confirmations)} "
                     f"successful confirmations. Context: {context.value}"
                 ),
+                vulnerability_context=vuln_context,
                 evidence=(
                     f"Payload: {payload}\n"
                     f"Description: {description}\n"

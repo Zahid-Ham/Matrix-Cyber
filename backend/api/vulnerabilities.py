@@ -90,7 +90,7 @@ async def list_vulnerabilities(
     )
 
 
-@router.get("/scan/{scan_id}/summary", response_model=VulnerabilitySummary)
+@router.get("/scan/{scan_id}/summary/", response_model=VulnerabilitySummary)
 async def get_vulnerability_summary(
     scan_id: int,
     current_user: User = Depends(get_current_user),
@@ -130,7 +130,7 @@ async def get_vulnerability_summary(
     )
 
 
-@router.get("/{vuln_id}", response_model=VulnerabilityResponse)
+@router.get("/{vuln_id}/", response_model=VulnerabilityResponse)
 async def get_vulnerability(
     vuln_id: int,
     current_user: User = Depends(get_current_user),
@@ -164,7 +164,7 @@ async def get_vulnerability(
     return VulnerabilityResponse.model_validate(vulnerability)
 
 
-@router.patch("/{vuln_id}", response_model=VulnerabilityResponse)
+@router.patch("/{vuln_id}/", response_model=VulnerabilityResponse)
 async def update_vulnerability(
     vuln_id: int,
     update_data: VulnerabilityUpdate,

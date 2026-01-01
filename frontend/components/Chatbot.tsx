@@ -7,6 +7,7 @@ import {
     ShieldAlert, ShieldCheck, Zap, ArrowRight, BookOpen
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
+import rehypeSanitize from 'rehype-sanitize';
 import { api } from '../lib/api';
 
 interface Message {
@@ -172,7 +173,7 @@ export function Chatbot({ scanResults, scanId, isOpen, onClose }: ChatbotProps) 
                                 : 'bg-white border border-warm-200 text-text-primary rounded-tl-none shadow-md shadow-warm-100'
                                 }`}>
                                 <div className="prose prose-sm max-w-none prose-pre:bg-gray-900 prose-pre:text-green-400 prose-code:text-accent-primary prose-code:bg-accent-primary/5 prose-code:px-1 prose-code:rounded">
-                                    <ReactMarkdown>{msg.content}</ReactMarkdown>
+                                    <ReactMarkdown rehypePlugins={[rehypeSanitize]}>{msg.content}</ReactMarkdown>
                                 </div>
                                 <div className={`text-[10px] mt-2 opacity-30 ${msg.role === 'user' ? 'text-right' : ''}`}>
                                     {msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}

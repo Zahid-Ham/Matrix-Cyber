@@ -42,30 +42,47 @@ class DatabaseConfig:
     """
     
     def __init__(self) -> None:
-        """Initialize database configuration and create async engine."""
+        """Initialize database configuration without creating engine immediately."""
         self.engine: Optional[AsyncEngine] = None
         self.session_maker: Optional[async_sessionmaker] = None
-        self._initialize_engine()
+        # Engine will be initialized lazily or manually via initialize_engine()
     
-    def _initialize_engine(self) -> None:
+    def initialize_engine(self) -> None:
         """Create and configure the async database engine."""
+        if self.engine:
+            return
+            
         try:
             logger.info(f"Initializing database engine: {self._get_safe_url()}")
             
+            # Determine if using SQLite (doesn't support pooling args)
+            is_sqlite = "sqlite" in settings.database_url.lower()
+            
+            # Engine configuration - SQLite doesn't support pool settings
+            engine_args = {
+                "echo": DB_ECHO_ENABLED,
+                "future": True,
+            }
+            
+            if not is_sqlite:
+                # PostgreSQL/MySQL pooling configuration
+                engine_args.update({
+                    "pool_size": DB_POOL_SIZE,
+                    "max_overflow": DB_MAX_OVERFLOW,
+                    "pool_timeout": DB_POOL_TIMEOUT,
+                    "pool_recycle": DB_POOL_RECYCLE,
+                    "pool_pre_ping": True,  # Verify connections before using
+                })
+            
             self.engine = create_async_engine(
                 settings.database_url,
-                echo=DB_ECHO_ENABLED,
-                future=True,
-                pool_size=DB_POOL_SIZE,
-                max_overflow=DB_MAX_OVERFLOW,
-                pool_timeout=DB_POOL_TIMEOUT,
-                pool_recycle=DB_POOL_RECYCLE,
-                pool_pre_ping=True,  # Verify connections before using
+                **engine_args
             )
             
             # Configure SQLite-specific optimizations
-            if "sqlite" in settings.database_url.lower():
+            if is_sqlite:
                 self._configure_sqlite_optimizations()
+
             
             # Create session factory
             self.session_maker = async_sessionmaker(
@@ -79,6 +96,14 @@ class DatabaseConfig:
         except Exception as e:
             logger.error(f"Failed to initialize database engine: {str(e)}", exc_info=True)
             raise
+
+    async def force_dispose(self) -> None:
+        """Force dispose of current engine to allow re-initialization in new loop."""
+        if self.engine:
+            await self.engine.dispose()
+            self.engine = None
+            self.session_maker = None
+            logger.info("Database engine forced to dispose")
     
     def _configure_sqlite_optimizations(self) -> None:
         """Configure SQLite-specific performance optimizations."""
@@ -176,9 +201,29 @@ class DatabaseConfig:
 # Global database configuration instance
 db_config = DatabaseConfig()
 
-# Expose engine and session maker for backward compatibility
-engine = db_config.engine
-async_session_maker = db_config.session_maker
+# Expose properties that always check initialization
+def get_engine() -> AsyncEngine:
+    if db_config.engine is None:
+        db_config.initialize_engine()
+    return db_config.engine
+
+def get_session_maker() -> async_sessionmaker:
+    if db_config.session_maker is None:
+        db_config.initialize_engine()
+    return db_config.session_maker
+
+# For backward compatibility, but use with caution in multi-loop environments
+# We'll use a trick to make them behave like the current engine/session_maker
+class LazyGlobal:
+    def __init__(self, func):
+        self.func = func
+    def __getattr__(self, name):
+        return getattr(self.func(), name)
+    def __call__(self, *args, **kwargs):
+        return self.func()(*args, **kwargs)
+
+engine = LazyGlobal(get_engine)
+async_session_maker = LazyGlobal(get_session_maker)
 
 
 class Base(DeclarativeBase):
