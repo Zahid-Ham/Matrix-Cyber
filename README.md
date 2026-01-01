@@ -1,20 +1,15 @@
 # Matrix - AI-Powered Autonomous Security Scanner
 
 <div align="center">
-  <img src="https://img.shields.io/badge/Python-3.11+-blue?style=for-the-badge&logo=python" alt="Python">
-  <img src="https://img.shields.io/badge/FastAPI-0.109+-green?style=for-the-badge&logo=fastapi" alt="FastAPI">
-<<<<<<< HEAD
-  <img src="https://img.shields.io/badge/Next.js-14-black?style=for-the-badge&logo=next.js" alt="Next.js">
-  <img src="https://img.shields.io/badge/Groq-AI-orange?style=for-the-badge&logo=ai" alt="Groq AI">
-  <img src="https://img.shields.io/badge/Redis-Queue-red?style=for-the-badge&logo=redis" alt="Redis">
-=======
-  <img src="https://img.shields.io/badge/Next.js-14+-black?style=for-the-badge&logo=next.js" alt="Next.js">
-<img src="https://img.shields.io/badge/Matrix-Autonomous%20Security-red?style=for-the-badge&logo=matrix&logoColor=white" alt="Matrix Autonomous Security">
->>>>>>> 799ed83382970d8bd57dc449378b81f5a35d224c
-</div>
 
-<div align="center">
-  <h3>🤖 8 Specialized AI Agents • 🎯 OWASP Top 10 Coverage • 📊 CISO-Grade Reports</h3>
+![Python](https://img.shields.io/badge/Python-3.11+-blue?style=for-the-badge&logo=python)
+![FastAPI](https://img.shields.io/badge/FastAPI-0.109+-green?style=for-the-badge&logo=fastapi)
+![Next.js](https://img.shields.io/badge/Next.js-14-black?style=for-the-badge&logo=next.js)
+![Groq AI](https://img.shields.io/badge/Groq-AI-orange?style=for-the-badge&logo=ai)
+![Redis](https://img.shields.io/badge/Redis-Queue-red?style=for-the-badge&logo=redis)
+
+### 🤖 8 Specialized AI Agents • 🎯 OWASP Top 10 Coverage • 📊 CISO-Grade Reports
+
 </div>
 
 ---
