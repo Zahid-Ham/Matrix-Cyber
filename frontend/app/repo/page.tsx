@@ -75,7 +75,22 @@ function RepoAnalysisContent() {
         // Calculate Top Vulnerable Files
         const fileCountMap: Record<string, { issues: number, severity: string }> = {};
         findings.forEach(f => {
-            const path = f.file_path || 'Security Headers / Config';
+            // Categorize findings without file_path based on vulnerability type
+            let path = f.file_path;
+            if (!path) {
+                const vulnType = f.vulnerability_type?.toLowerCase() || '';
+                if (vulnType.includes('header') || vulnType.includes('cors') || vulnType.includes('csp')) {
+                    path = 'HTTP Security Headers';
+                } else if (vulnType.includes('ssl') || vulnType.includes('tls') || vulnType.includes('certificate')) {
+                    path = 'TLS/SSL Configuration';
+                } else if (vulnType.includes('cookie')) {
+                    path = 'Cookie Security Policy';
+                } else if (vulnType.includes('auth') || vulnType.includes('session')) {
+                    path = 'Authentication/Session Config';
+                } else {
+                    path = 'Infrastructure/Config';
+                }
+            }
             const sev = (f.severity || 'info').toLowerCase();
             if (!fileCountMap[path]) {
                 fileCountMap[path] = { issues: 0, severity: sev };
@@ -144,25 +159,118 @@ function RepoAnalysisContent() {
     };
 
     const startPolling = (id: number) => {
+        let lastProgress = 0;
+        let lastFileCount = 0;
+        let milestones = [10, 25, 40, 60, 75, 90];
+        let milestonesReached = new Set<number>();
+
         const interval = setInterval(async () => {
             try {
                 const statusUpdate = await api.getScan(id);
                 setProgress(statusUpdate.progress);
 
+                // Detailed logging based on progress milestones
+                const currentProgress = statusUpdate.progress;
+
+                // Log agents being activated
+                if (currentProgress >= 5 && currentProgress < 15 && lastProgress < 5) {
+                    setAuditLogs(prev => [
+                        ...prev,
+                        '[SYSTEM] Activating security agents...',
+                        `[AGENT] GitHub Security Scanner - ARMED`,
+                        `[AGENT] API Security Analyzer - ARMED`,
+                        `[AGENT] XSS Detection Engine - ARMED`,
+                        '[INFO] Beginning reconnaissance phase...'
+                    ]);
+                }
+
+                // Log repository structure analysis
+                if (currentProgress >= 15 && currentProgress < 25 && lastProgress < 15) {
+                    setAuditLogs(prev => [
+                        ...prev,
+                        '[SCAN] Analyzing repository structure...',
+                        '[SCAN] Mapping file dependencies...',
+                        '[SCAN] Prioritizing critical assets...'
+                    ]);
+                }
+
+                // Log progress milestones
+                milestones.forEach(milestone => {
+                    if (currentProgress >= milestone && !milestonesReached.has(milestone)) {
+                        milestonesReached.add(milestone);
+                        if (milestone <= 25) {
+                            setAuditLogs(prev => [...prev, `[PROGRESS] Reconnaissance ${milestone}% complete`]);
+                        } else if (milestone <= 60) {
+                            setAuditLogs(prev => [...prev, `[PROGRESS] Secret scanning ${milestone}% complete`]);
+                        } else {
+                            setAuditLogs(prev => [...prev, `[PROGRESS] Vulnerability analysis ${milestone}% complete`]);
+                        }
+                    }
+                });
+
                 // Update scanned files real-time during polling
                 if (statusUpdate.scanned_files && statusUpdate.scanned_files.length > 0) {
+                    const currentFileCount = statusUpdate.scanned_files.length;
+
+                    // Log new files being scanned
+                    if (currentFileCount > lastFileCount) {
+                        const newFiles = statusUpdate.scanned_files.slice(lastFileCount, currentFileCount);
+                        newFiles.slice(0, 3).forEach(file => {
+                            const fileName = file.split('/').pop() || file;
+                            setAuditLogs(prev => [...prev, `[AUDIT] Scanning ${fileName}...`]);
+                        });
+
+                        if (newFiles.length > 3) {
+                            setAuditLogs(prev => [...prev, `[AUDIT] + ${newFiles.length - 3} more files queued`]);
+                        }
+
+                        lastFileCount = currentFileCount;
+                    }
+
                     setScannedFiles(statusUpdate.scanned_files);
                 }
+
+                // Log deep analysis phase
+                if (currentProgress >= 70 && currentProgress < 85 && lastProgress < 70) {
+                    setAuditLogs(prev => [
+                        ...prev,
+                        '[ANALYZE] Running deep code analysis...',
+                        '[ANALYZE] Cross-referencing vulnerability database...',
+                        '[ANALYZE] Calculating CVSS scores...'
+                    ]);
+                }
+
+                // Log finalization
+                if (currentProgress >= 90 && lastProgress < 90) {
+                    setAuditLogs(prev => [
+                        ...prev,
+                        '[FINALIZE] Aggregating findings...',
+                        '[FINALIZE] Generating security report...'
+                    ]);
+                }
+
+                lastProgress = currentProgress;
 
                 if (statusUpdate.status === 'completed') {
                     clearInterval(interval);
                     setIsAnalyzing(false);
                     setIsAuditDone(true);
-                    setAuditLogs(prev => [...prev, '[SUCCESS] Analysis completed successfully.', '[SYSTEM] Fetching findings...']);
+                    setAuditLogs(prev => [
+                        ...prev,
+                        '[SUCCESS] ✓ Analysis completed successfully',
+                        `[RESULT] Scanned ${statusUpdate.scanned_files?.length || 0} source files`,
+                        '[SYSTEM] Fetching vulnerability details...'
+                    ]);
 
                     const vulnResponse = await api.getVulnerabilities(id);
                     const summary = processFindings(vulnResponse.items);
                     setScannedFiles(statusUpdate.scanned_files || []);
+
+                    setAuditLogs(prev => [
+                        ...prev,
+                        `[RESULT] Found ${vulnResponse.total} security findings`,
+                        '[SYSTEM] Report ready for review'
+                    ]);
 
                     setMessages(prevMsg => [...prevMsg, {
                         role: 'assistant',
@@ -171,7 +279,7 @@ function RepoAnalysisContent() {
                 } else if (statusUpdate.status === 'failed' || statusUpdate.status === 'cancelled') {
                     clearInterval(interval);
                     setIsAnalyzing(false);
-                    setAuditLogs(prev => [...prev, `[ERROR] Scan failed: ${statusUpdate.error_message}`]);
+                    setAuditLogs(prev => [...prev, `[ERROR] ✗ Scan failed: ${statusUpdate.error_message || 'Unknown error'}`]);
                     setMessages(prevMsg => [...prevMsg, {
                         role: 'assistant',
                         content: `Analysis failed: ${statusUpdate.error_message}. Please check the URL and try again.`
@@ -182,6 +290,7 @@ function RepoAnalysisContent() {
             }
         }, 2000);
     };
+
 
     const scrollToBottom = () => {
         chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -210,7 +319,12 @@ function RepoAnalysisContent() {
         setIsAnalyzing(true);
         setIsAuditDone(false);
         setProgress(0);
-        setAuditLogs(['[SYSTEM] Initializing Matrix SAST Engine...', '[SYSTEM] Authenticating with GitHub API...']);
+        setAuditLogs([
+            `[SYSTEM] Initializing Matrix SAST Engine...`,
+            `[SYSTEM] Authenticating with GitHub API...`,
+            `[INFO] Target: ${repoUrl}`,
+            `[SYSTEM] Preparing security mesh...`
+        ]);
         setMessages([
             { role: 'assistant', content: `Analyzing ${repoUrl}. I'm scanning for secrets and vulnerabilities.` }
         ]);
@@ -223,7 +337,12 @@ function RepoAnalysisContent() {
                 agents_enabled: ['github_security', 'api_security', 'xss']
             });
             setScanId(scan.id);
-            setAuditLogs(prev => [...prev, `[INFO] Scan job created (ID: ${scan.id})`]);
+            setAuditLogs(prev => [
+                ...prev,
+                `[INFO] Scan job created (ID: ${scan.id})`,
+                `[QUEUE] Task dispatched to worker mesh...`,
+                `[WAIT] Initializing scan execution...`
+            ]);
 
             // 2. Poll for Status
             startPolling(scan.id);
@@ -567,7 +686,7 @@ function RepoAnalysisContent() {
 
                     <div className="mt-6 grid grid-cols-3 gap-4">
                         <div className="glass-card p-6 text-center">
-                            <div className="text-3xl font-serif text-accent-primary font-light">{isAuditDone ? (stats.files || '~') : '0'}</div>
+                            <div className="text-3xl font-serif text-accent-primary font-light">{isAuditDone ? (scannedFiles.length || '~') : '0'}</div>
                             <div className="text-[10px] text-text-muted uppercase tracking-tighter">Files Scanned</div>
                         </div>
                         <div className="glass-card p-6 text-center">
