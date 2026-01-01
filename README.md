@@ -2,10 +2,10 @@
 
 <div align="center">
 
+<img src="https://img.shields.io/badge/Matrix-Autonomous%20Security-red?style=for-the-badge&logo=matrix&logoColor=white" alt="Matrix Autonomous Security">
 ![Python](https://img.shields.io/badge/Python-3.11+-blue?style=for-the-badge&logo=python)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.109+-green?style=for-the-badge&logo=fastapi)
 ![Next.js](https://img.shields.io/badge/Next.js-14-black?style=for-the-badge&logo=next.js)
-![Groq AI](https://img.shields.io/badge/Groq-AI-orange?style=for-the-badge&logo=ai)
 ![Redis](https://img.shields.io/badge/Redis-Queue-red?style=for-the-badge&logo=redis)
 
 ### 🤖 8 Specialized AI Agents • 🎯 OWASP Top 10 Coverage • 📊 CISO-Grade Reports
