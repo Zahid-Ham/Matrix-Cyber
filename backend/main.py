@@ -216,18 +216,38 @@ class DynamicCORSMiddleware:
         # Get origin from headers
         headers = dict(scope.get("headers", []))
         origin = headers.get(b"origin", b"").decode("utf-8")
+        method = scope.get("method", "")
         
         # Check if origin is allowed
         if is_allowed_origin(origin):
-            # Add CORS headers
+            # Handle OPTIONS preflight requests
+            if method == "OPTIONS":
+                async def send_options_response(message):
+                    if message["type"] == "http.response.start":
+                        message["status"] = 200
+                        message["headers"] = [
+                            (b"access-control-allow-origin", origin.encode()),
+                            (b"access-control-allow-credentials", b"true"),
+                            (b"access-control-allow-methods", b"GET, POST, PUT, DELETE, OPTIONS, PATCH"),
+                            (b"access-control-allow-headers", b"*"),
+                            (b"access-control-max-age", b"86400"),
+                            (b"content-length", b"0"),
+                        ]
+                    await send(message)
+                
+                await send_options_response({"type": "http.response.start"})
+                await send({"type": "http.response.body", "body": b""})
+                return
+            
+            # Add CORS headers to regular requests
             async def send_with_cors(message):
                 if message["type"] == "http.response.start":
-                    headers = dict(message.get("headers", []))
-                    headers[b"access-control-allow-origin"] = origin.encode()
-                    headers[b"access-control-allow-credentials"] = b"true"
-                    headers[b"access-control-allow-methods"] = b"GET, POST, PUT, DELETE, OPTIONS, PATCH"
-                    headers[b"access-control-allow-headers"] = b"*"
-                    message["headers"] = list(headers.items())
+                    headers = list(message.get("headers", []))
+                    headers.append((b"access-control-allow-origin", origin.encode()))
+                    headers.append((b"access-control-allow-credentials", b"true"))
+                    headers.append((b"access-control-allow-methods", b"GET, POST, PUT, DELETE, OPTIONS, PATCH"))
+                    headers.append((b"access-control-allow-headers", b"*"))
+                    message["headers"] = headers
                 await send(message)
             
             await self.app(scope, receive, send_with_cors)
