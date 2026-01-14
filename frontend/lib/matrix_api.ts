@@ -29,6 +29,26 @@ export class MatrixApiClient {
         return null;
     }
 
+    private extractErrorMessage(errorData: any, status: number): string {
+        let message: string;
+        if (typeof errorData.detail === 'string') {
+            message = errorData.detail;
+        } else if (typeof errorData.detail === 'object' && errorData.detail !== null) {
+            message = JSON.stringify(errorData.detail);
+        } else if (errorData.message) {
+            message = errorData.message;
+        } else if (errorData.error) {
+            message = typeof errorData.error === 'string' ? errorData.error : JSON.stringify(errorData.error);
+        } else {
+            message = `HTTP error ${status}`;
+        }
+
+        if (message === 'Could not validate credentials' || status === 401) {
+            return 'Session expired. Please log in again.';
+        }
+        return message;
+    }
+
     private async request<T>(
         endpoint: string,
         options: RequestInit = {}
@@ -84,8 +104,8 @@ export class MatrixApiClient {
                         });
 
                         if (!retryResponse.ok) {
-                            const error: ApiError = await retryResponse.json().catch(() => ({ detail: 'Unknown error' }));
-                            throw new Error(error.detail || `HTTP error ${retryResponse.status}`);
+                            const errorData = await retryResponse.json().catch(() => ({ detail: 'Unknown error' }));
+                            throw new Error(this.extractErrorMessage(errorData, retryResponse.status));
                         }
 
                         return retryResponse.json();
@@ -96,17 +116,10 @@ export class MatrixApiClient {
             }
 
             if (!response.ok) {
-                const error: any = await response.json().catch(() => ({ detail: 'Unknown error' }));
-                let message = error.detail || `HTTP error ${response.status}`;
+                const errorData: any = await response.json().catch(() => ({ detail: 'Unknown error' }));
+                const message = this.extractErrorMessage(errorData, response.status);
 
-                // If there's a detailed error from the backend (like in debug mode), include it
-                if (error.error) {
-                    message = `${message}: ${error.error}`;
-                }
-
-                if (message === 'Could not validate credentials') {
-                    message = 'Session expired. Please log in again.';
-                }
+                console.error('[API] Request failed:', { endpoint, status: response.status, message, data: errorData });
                 throw new Error(message);
             }
 
