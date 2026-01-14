@@ -229,7 +229,7 @@ class DynamicCORSMiddleware:
                             (b"access-control-allow-origin", origin.encode()),
                             (b"access-control-allow-credentials", b"true"),
                             (b"access-control-allow-methods", b"GET, POST, PUT, DELETE, OPTIONS, PATCH"),
-                            (b"access-control-allow-headers", b"*"),
+                            (b"access-control-allow-headers", b"content-type, authorization, x-csrf-token, x-requested-with, accept, origin"),
                             (b"access-control-max-age", b"86400"),
                             (b"content-length", b"0"),
                         ]
@@ -246,7 +246,7 @@ class DynamicCORSMiddleware:
                     headers.append((b"access-control-allow-origin", origin.encode()))
                     headers.append((b"access-control-allow-credentials", b"true"))
                     headers.append((b"access-control-allow-methods", b"GET, POST, PUT, DELETE, OPTIONS, PATCH"))
-                    headers.append((b"access-control-allow-headers", b"*"))
+                    headers.append((b"access-control-allow-headers", b"content-type, authorization, x-csrf-token, x-requested-with, accept, origin"))
                     message["headers"] = headers
                 await send(message)
             
