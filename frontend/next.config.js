@@ -26,7 +26,7 @@ const nextConfig = {
           "style-src-elem 'self' 'unsafe-inline' https://fonts.googleapis.com",
           "img-src 'self' data: https:",
           "font-src 'self' https://fonts.gstatic.com",
-          "connect-src 'self' http://localhost:8000 https://api.matrix.com",
+          "connect-src 'self' http://localhost:8000 https://matrix-jcbh.onrender.com https://api.matrix.com",
           "frame-ancestors 'none'",
           "base-uri 'self'",
           "form-action 'self'"
