@@ -1,0 +1,10 @@
+ID: 48 | Target: https://github.com/Viverun/Matrix | Status: ScanStatus.RUNNING | Vulnerabilities: 0 | Error: None
+ID: 47 | Target: http://github.com/Viverun/Matrix | Status: ScanStatus.COMPLETED | Vulnerabilities: 18 | Error: None
+ID: 46 | Target: http://github.com/Viverun/Matrix | Status: ScanStatus.COMPLETED | Vulnerabilities: 16 | Error: None
+ID: 45 | Target: http://github.com/Viverun/Matrix | Status: ScanStatus.COMPLETED | Vulnerabilities: 16 | Error: None
+ID: 44 | Target: http://github.com/Viverun/Playlistify | Status: ScanStatus.COMPLETED | Vulnerabilities: 21 | Error: None
+ID: 43 | Target: http://github.com/Viverun/Playlistify | Status: ScanStatus.COMPLETED | Vulnerabilities: 28 | Error: None
+ID: 42 | Target: http://github.com/Viverun/Matrix | Status: ScanStatus.COMPLETED | Vulnerabilities: 19 | Error: None
+ID: 41 | Target: http://github.com/Vivern/Matrix | Status: ScanStatus.COMPLETED | Vulnerabilities: 0 | Error: None
+ID: 40 | Target: http://github.com/Viverun/Matrix | Status: ScanStatus.COMPLETED | Vulnerabilities: 18 | Error: None
+ID: 39 | Target: http://github.com/Viverun/Matrix | Status: ScanStatus.COMPLETED | Vulnerabilities: 17 | Error: None

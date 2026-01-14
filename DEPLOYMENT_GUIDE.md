@@ -11,8 +11,12 @@ I have created a `Dockerfile` and `start.sh` so you can run the **Web Server** a
    - **Environment/Runtime**: Select **Docker**.
    - **Root Directory**: `backend` (If asked).
 3. **Environment Variables**: Add these in the dashboard:
-   - `DATABASE_URL`: Your Railway Postgres (e.g. `postgresql+asyncpg://...`)
-   - `REDIS_URL`: Your Railway Redis (e.g. `redis://...`)
+   - `DATABASE_URL`: Your Railway **External** Postgres URL (Must start with `postgresql+asyncpg://`). 
+     > [!IMPORTANT]
+     > Avoid URLs ending in `.railway.internal`. Use the **Public/External** URL provided in Railway settings.
+   - `REDIS_URL`: Your Railway **External** Redis URL.
+     > [!IMPORTANT]
+     > Use the Public URL, NOT the one ending in `.railway.internal`.
    - `ALLOWED_ORIGINS`: Your Vercel URL.
    - `ENVIRONMENT`: `production`
    - `SECRET_KEY`: Random string.
