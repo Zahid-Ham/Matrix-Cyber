@@ -17,10 +17,6 @@ from config import get_settings
 from core.database import init_db, close_db
 from api import auth_router, scans_router, vulnerabilities_router, chatbot_router, test_bench
 from agents.orchestrator import orchestrator
-from agents.xss_agent import XSSAgent
-from agents.sql_injection_agent import SQLInjectionAgent
-from agents.auth_agent import AuthenticationAgent
-from agents.api_security_agent import APISecurityAgent
 
 settings = get_settings()
 
@@ -128,18 +124,11 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan handler."""
-    # Startup
     print("Starting Matrix...")
     await init_db()
     
-    # Register agents
-    orchestrator.register_agent(XSSAgent())
-    orchestrator.register_agent(SQLInjectionAgent())
-    orchestrator.register_agent(AuthenticationAgent())
-    orchestrator.register_agent(APISecurityAgent())
-    print("[Main] Security agents registered")
-    
-    print("Database initialized and Agents registered")
+    # Agents will be lazy-loaded by orchestrator on-demand
+    print("[Main] Database initialized")
     
     yield
     
