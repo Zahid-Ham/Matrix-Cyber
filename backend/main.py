@@ -177,29 +177,64 @@ app.add_middleware(SecurityHeadersMiddleware)
 from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 app.add_middleware(ProxyHeadersMiddleware, trusted_hosts="*")
 
-# Configure CORS LAST (outer layer, runs first on request)
-# Note: allow_origins=["*"] with allow_credentials=True fails in many browsers.
-# We must specify exact origins.
+# Configure CORS with dynamic origin validation for Vercel preview deployments
+# Vercel creates new preview URLs for each deployment, so we need pattern matching
 origins = [origin.strip() for origin in settings.allowed_origins.split(",") if origin.strip()]
 
-if "*" in origins or settings.environment != "production":
-    allow_all = True
-    origins = ["*"]
-else:
-    allow_all = False
-    if settings.debug:
-        # In debug mode, we might want to allow other local ports or tools
-        for local_origin in ["http://localhost:3000", "http://127.0.0.1:3000", "http://localhost:8000", "http://127.0.0.1:8000"]:
-            if local_origin not in origins:
-                origins.append(local_origin)
+def is_allowed_origin(origin: str) -> bool:
+    """Check if origin is allowed (supports Vercel preview deployments)."""
+    if not origin:
+        return False
+    
+    # Allow exact matches from ALLOWED_ORIGINS
+    if origin in origins:
+        return True
+    
+    # Allow all Vercel preview deployments (*.vercel.app)
+    if origin.endswith('.vercel.app') and origin.startswith('https://'):
+        return True
+    
+    # Allow localhost for development
+    if 'localhost' in origin or '127.0.0.1' in origin:
+        return True
+    
+    return False
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=origins,
-    allow_credentials=True if not ("*" in origins) else False, # Credentials cannot be used with "*"
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# Custom CORS middleware to handle dynamic origins
+from starlette.middleware.cors import CORSMiddleware as StarletteC ORS
+from starlette.types import ASGIApp, Receive, Scope, Send
+
+class DynamicCORSMiddleware:
+    def __init__(self, app: ASGIApp):
+        self.app = app
+    
+    async def __call__(self, scope: Scope, receive: Receive, send: Send):
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+        
+        # Get origin from headers
+        headers = dict(scope.get("headers", []))
+        origin = headers.get(b"origin", b"").decode("utf-8")
+        
+        # Check if origin is allowed
+        if is_allowed_origin(origin):
+            # Add CORS headers
+            async def send_with_cors(message):
+                if message["type"] == "http.response.start":
+                    headers = dict(message.get("headers", []))
+                    headers[b"access-control-allow-origin"] = origin.encode()
+                    headers[b"access-control-allow-credentials"] = b"true"
+                    headers[b"access-control-allow-methods"] = b"GET, POST, PUT, DELETE, OPTIONS, PATCH"
+                    headers[b"access-control-allow-headers"] = b"*"
+                    message["headers"] = list(headers.items())
+                await send(message)
+            
+            await self.app(scope, receive, send_with_cors)
+        else:
+            await self.app(scope, receive, send)
+
+app.add_middleware(DynamicCORSMiddleware)
 
 
 # Health check endpoint
