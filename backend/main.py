@@ -201,7 +201,7 @@ def is_allowed_origin(origin: str) -> bool:
     return False
 
 # Custom CORS middleware to handle dynamic origins
-from starlette.middleware.cors import CORSMiddleware as StarletteC ORS
+from starlette.middleware.cors import CORSMiddleware as StarletteCORS
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 class DynamicCORSMiddleware:
