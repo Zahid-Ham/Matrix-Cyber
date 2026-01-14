@@ -279,91 +279,149 @@ class AgentOrchestrator:
         # Metrics
         self.scan_metrics: Optional[ScanMetrics] = None
 
-        # Register default agents
-        self._register_default_agents()
+        # Lazy loading: Agent registry (not initialized yet)
+        self._agent_registry: Dict[str, Dict[str, Any]] = {}
+        self._loaded_agents: Set[str] = set()
+        self._build_agent_registry()
 
     # ==================== Agent Registration ====================
 
-    def _register_default_agents(self) -> None:
-        """Register default security agents with dependency configuration."""
+    def _build_agent_registry(self) -> None:
+        """Build agent registry for lazy loading (no initialization yet)."""
+        # Registry maps agent_name -> {class, phase, dependencies, timeout}
+        self._agent_registry = {
+            AgentNames.GITHUB: {
+                "class": "GithubSecurityAgent",
+                "module": ".github_agent",
+                "phase": AgentPhase.RECONNAISSANCE,
+                "dependencies": [],
+                "timeout": OrchestratorConfig.GITHUB_AGENT_TIMEOUT,
+                "requires_config": True  # Needs GitHub token
+            },
+            AgentNames.AUTH: {
+                "class": "AuthenticationAgent",
+                "module": ".auth_agent",
+                "phase": AgentPhase.DISCOVERY,
+                "dependencies": [AgentNames.GITHUB],
+                "timeout": OrchestratorConfig.DISCOVERY_AGENT_TIMEOUT
+            },
+            AgentNames.API: {
+                "class": "APISecurityAgent",
+                "module": ".api_security_agent",
+                "phase": AgentPhase.DISCOVERY,
+                "dependencies": [AgentNames.GITHUB],
+                "timeout": OrchestratorConfig.DISCOVERY_AGENT_TIMEOUT
+            },
+            AgentNames.SQL_INJECTION: {
+                "class": "SQLInjectionAgent",
+                "module": ".sql_injection_agent",
+                "phase": AgentPhase.EXPLOITATION,
+                "dependencies": [AgentNames.AUTH, AgentNames.API],
+                "timeout": OrchestratorConfig.EXPLOITATION_AGENT_TIMEOUT
+            },
+            AgentNames.XSS: {
+                "class": "XSSAgent",
+                "module": ".xss_agent",
+                "phase": AgentPhase.EXPLOITATION,
+                "dependencies": [AgentNames.AUTH, AgentNames.API],
+                "timeout": OrchestratorConfig.EXPLOITATION_AGENT_TIMEOUT
+            },
+            AgentNames.CSRF: {
+                "class": "CSRFAgent",
+                "module": ".csrf_agent",
+                "phase": AgentPhase.EXPLOITATION,
+                "dependencies": [AgentNames.AUTH],
+                "timeout": OrchestratorConfig.DISCOVERY_AGENT_TIMEOUT
+            },
+            AgentNames.SSRF: {
+                "class": "SSRFAgent",
+                "module": ".ssrf_agent",
+                "phase": AgentPhase.EXPLOITATION,
+                "dependencies": [AgentNames.API],
+                "timeout": OrchestratorConfig.DISCOVERY_AGENT_TIMEOUT
+            },
+            AgentNames.COMMAND_INJECTION: {
+                "class": "CommandInjectionAgent",
+                "module": ".command_injection_agent",
+                "phase": AgentPhase.EXPLOITATION,
+                "dependencies": [AgentNames.API],
+                "timeout": OrchestratorConfig.DISCOVERY_AGENT_TIMEOUT
+            }
+        }
+
+    def _load_agent_on_demand(self, agent_name: str) -> BaseSecurityAgent:
+        """Lazy load an agent when needed."""
+        if agent_name in self.agents:
+            return self.agents[agent_name]
+
+        if agent_name not in self._agent_registry:
+            raise AgentRegistrationError(f"Unknown agent: {agent_name}")
+
+        config = self._agent_registry[agent_name]
+        
         try:
-            # Import agents
-            from .sql_injection_agent import SQLInjectionAgent
-            from .xss_agent import XSSAgent
-            from .auth_agent import AuthenticationAgent
-            from .api_security_agent import APISecurityAgent
-            from .csrf_agent import CSRFAgent
-            from .ssrf_agent import SSRFAgent
-            from .command_injection_agent import CommandInjectionAgent
+            # Import the agent module
+            import importlib
+            module = importlib.import_module(config["module"], package="agents")
+            agent_class = getattr(module, config["class"])
 
-            # GitHub agent - reconnaissance phase
-            from config import get_settings
-            settings = get_settings()
+            # Initialize agent
+            if config.get("requires_config"):
+                # GitHub agent needs token
+                from config import get_settings
+                settings = get_settings()
+                agent = agent_class(github_token=settings.github_token)
+            else:
+                agent = agent_class()
+
+            # Register it
+            self.register_agent(
+                agent,
+                phase=config["phase"],
+                dependencies=config["dependencies"],
+                timeout_seconds=config["timeout"]
+            )
+
+            self._loaded_agents.add(agent_name)
+            logger.info(f"Lazy loaded agent: {agent_name}")
+
+            return agent
+
+        except Exception as e:
+            logger.error(f"Failed to load agent {agent_name}: {e}")
+            raise AgentRegistrationError(f"Agent load failed: {agent_name} - {e}")
+
+    def _unload_agent(self, agent_name: str) -> None:
+        """Unload an agent to free memory."""
+        if agent_name not in self.agents:
+            return
+
+        agent = self.agents[agent_name]
+        
+        try:
+            # Close HTTP sessions if agent has them
+            if hasattr(agent, 'close'):
+                if asyncio.iscoroutinefunction(agent.close):
+                    # Can't await here, so we'll just mark for cleanup
+                    logger.debug(f"Agent {agent_name} has async close, scheduling")
+                else:
+                    agent.close()
+
+            # Remove from registry
+            del self.agents[agent_name]
+            if agent_name in self.agent_nodes:
+                del self.agent_nodes[agent_name]
             
-            self._register_agent_safe(
-                GithubSecurityAgent(github_token=settings.github_token),
-                phase=AgentPhase.RECONNAISSANCE,
-                dependencies=[],
-                timeout_seconds=OrchestratorConfig.GITHUB_AGENT_TIMEOUT
-            )
+            self._loaded_agents.discard(agent_name)
 
-            # Authentication agent - discovery phase
-            self._register_agent_safe(
-                AuthenticationAgent(),
-                phase=AgentPhase.DISCOVERY,
-                dependencies=[AgentNames.GITHUB],
-                timeout_seconds=OrchestratorConfig.DISCOVERY_AGENT_TIMEOUT
-            )
+            # Force garbage collection
+            import gc
+            gc.collect()
 
-            # API Security agent - discovery phase
-            self._register_agent_safe(
-                APISecurityAgent(),
-                phase=AgentPhase.DISCOVERY,
-                dependencies=[AgentNames.GITHUB],
-                timeout_seconds=OrchestratorConfig.DISCOVERY_AGENT_TIMEOUT
-            )
+            logger.info(f"Unloaded agent: {agent_name}")
 
-            # Exploitation agents
-            exploitation_deps = [AgentNames.AUTH, AgentNames.API]
-
-            self._register_agent_safe(
-                SQLInjectionAgent(),
-                phase=AgentPhase.EXPLOITATION,
-                dependencies=exploitation_deps,
-                timeout_seconds=OrchestratorConfig.EXPLOITATION_AGENT_TIMEOUT
-            )
-
-            self._register_agent_safe(
-                XSSAgent(),
-                phase=AgentPhase.EXPLOITATION,
-                dependencies=exploitation_deps,
-                timeout_seconds=OrchestratorConfig.EXPLOITATION_AGENT_TIMEOUT
-            )
-
-            self._register_agent_safe(
-                CSRFAgent(),
-                phase=AgentPhase.EXPLOITATION,
-                dependencies=[AgentNames.AUTH],
-                timeout_seconds=OrchestratorConfig.DISCOVERY_AGENT_TIMEOUT
-            )
-
-            self._register_agent_safe(
-                SSRFAgent(),
-                phase=AgentPhase.EXPLOITATION,
-                dependencies=[AgentNames.API],
-                timeout_seconds=OrchestratorConfig.DISCOVERY_AGENT_TIMEOUT
-            )
-
-            self._register_agent_safe(
-                CommandInjectionAgent(),
-                phase=AgentPhase.EXPLOITATION,
-                dependencies=[AgentNames.API],
-                timeout_seconds=OrchestratorConfig.DISCOVERY_AGENT_TIMEOUT
-            )
-
-        except ImportError as e:
-            logger.error(f"Failed to import agent: {e}")
-            raise AgentRegistrationError(f"Agent import failed: {e}")
+        except Exception as e:
+            logger.error(f"Error unloading agent {agent_name}: {e}")
 
     def _register_agent_safe(
             self,
@@ -874,6 +932,12 @@ class AgentOrchestrator:
             all_results.extend(phase_results)
             completed_agents.update(phase_agents)
 
+            # MEMORY OPTIMIZATION: Unload agents from this phase
+            for agent_name in phase_agents:
+                self._unload_agent(agent_name)
+
+            logger.info(f"Phase {phase.value} complete, agents unloaded")
+
         return all_results
 
     def _group_agents_by_phase(
@@ -969,6 +1033,14 @@ class AgentOrchestrator:
         """Get agents whose dependencies are satisfied."""
         ready = []
         for agent_name in remaining:
+            # Lazy load agent if not already loaded
+            if agent_name not in self.agents:
+                try:
+                    self._load_agent_on_demand(agent_name)
+                except AgentRegistrationError:
+                    logger.error(f"Failed to load agent {agent_name}, skipping")
+                    continue
+
             node = self.agent_nodes[agent_name]
             if node.has_dependencies_satisfied(completed, scan_scope):
                 ready.append(agent_name)
@@ -1007,6 +1079,15 @@ class AgentOrchestrator:
         tasks = []
 
         for agent_name in agent_names:
+            # Ensure agent is loaded (should already be from _get_ready_agents)
+            if agent_name not in self.agents:
+                logger.warning(f"Agent {agent_name} not loaded, loading now")
+                try:
+                    self._load_agent_on_demand(agent_name)
+                except AgentRegistrationError as e:
+                    logger.error(f"Failed to load {agent_name}: {e}")
+                    continue
+
             agent = self.agents[agent_name]
             node = self.agent_nodes[agent_name]
 

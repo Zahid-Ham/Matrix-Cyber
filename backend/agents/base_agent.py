@@ -71,6 +71,7 @@ class AgentConfig:
     # Response Handling
     MAX_CACHED_RESPONSE_SIZE = 1000  # Characters to store in evidence
     RESPONSE_SNIPPET_SIZE = 500  # Default snippet size
+    MAX_RESPONSE_SIZE_BYTES = 500_000  # 500KB max to prevent memory issues
 
     # CVSS Scoring constants removed - use CVSSCalculator
 
@@ -750,22 +751,69 @@ class BaseSecurityAgent(ABC):
             params: Optional[Dict],
             attempt: int
     ) -> httpx.Response:
-        """Execute HTTP request and report metrics."""
+        """Execute HTTP request with size limits and report metrics."""
         start_time = time.time()
 
         try:
-            response = await self.http_client.request(
+            # MEMORY OPTIMIZATION: Stream response and limit size
+            async with self.http_client.stream(
                 method=method,
                 url=url,
                 data=data,
                 headers=headers,
                 params=params
-            )
+            ) as stream_response:
+                # Read response up to max size
+                content_chunks = []
+                total_bytes = 0
+                truncated = False
+
+                async for chunk in stream_response.aiter_bytes():
+                    chunk_size = len(chunk)
+                    if total_bytes + chunk_size > AgentConfig.MAX_RESPONSE_SIZE_BYTES:
+                        # Truncate
+                        remaining = AgentConfig.MAX_RESPONSE_SIZE_BYTES - total_bytes
+                        if remaining > 0:
+                            content_chunks.append(chunk[:remaining])
+                        truncated = True
+                        break
+                    content_chunks.append(chunk)
+                    total_bytes += chunk_size
+
+                # Build response object with limited content
+                full_content = b''.join(content_chunks)
+                
+                # Create a mock response object with the truncated content
+                class TruncatedResponse:
+                    def __init__(self, original_response, content_bytes, was_truncated):
+                        self.status_code = original_response.status_code
+                        self.headers = original_response.headers
+                        self.content = content_bytes
+                        self._text = None
+                        self._was_truncated = was_truncated
+                    
+                    @property
+                    def text(self):
+                        if self._text is None:
+                            self._text = self.content.decode('utf-8', errors='replace')
+                        return self._text
+                    
+                    def json(self):
+                        import json
+                        return json.loads(self.text)
+                
+                response = TruncatedResponse(stream_response, full_content, truncated)
+
+                if truncated:
+                    logger.warning(
+                        f"[{self.agent_name}] Response truncated at {total_bytes} bytes: {url}"
+                    )
+
         except AttributeError as e:
             if "send" in str(e) and "NoneType" in str(e):
                 is_closed = getattr(self.http_client, "is_closed", "Unknown")
                 logger.error(
-                    f"[{self.agent_name}] CRITICAL: 'NoneType' send error. code_client_type={type(self.http_client)}, "
+                    f"[{self.agent_name}] CRITICAL: 'NoneType' send error. http_client_type={type(self.http_client)}, "
                     f"is_closed={is_closed}. method={method}, url={url}"
                 )
             raise e
