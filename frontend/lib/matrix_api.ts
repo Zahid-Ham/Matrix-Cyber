@@ -38,6 +38,11 @@ export class MatrixApiClient {
             ...options.headers,
         };
 
+        // Inject Authorization header if token is available in memory
+        if (this.accessToken) {
+            (headers as any)['Authorization'] = `Bearer ${this.accessToken}`;
+        }
+
         // Inject CSRF Token from memory (fallback to cookie)
         const csrfToken = this.csrfToken || this.getCookie('CSRF-TOKEN');
         if (csrfToken) {
@@ -111,8 +116,9 @@ export class MatrixApiClient {
         }
     }
 
-    // Store CSRF token in memory (since we can't read cross-origin cookies)
+    // Store tokens in memory for cross-site compatibility
     private csrfToken: string | null = null;
+    private accessToken: string | null = null;
 
     async ensureCsrf() {
         const response = await this.request<{ status: string; csrf_token?: string }>('/api/csrf/');
@@ -132,27 +138,40 @@ export class MatrixApiClient {
         full_name?: string;
         company?: string;
     }) {
-        return this.request<{
+        const response = await this.request<{
             access_token: string;
             user: User;
         }>('/api/auth/register/', {
             method: 'POST',
             body: JSON.stringify(data),
         });
+
+        if (response.access_token) {
+            this.accessToken = response.access_token;
+            console.log('[API] Registration successful, access token stored');
+        }
+        return response;
     }
 
     async login(email: string, password: string) {
         // Response contains token for backward compat, but cookies are set
-        return this.request<{
+        const response = await this.request<{
             access_token: string;
             user: User;
         }>('/api/auth/login/', {
             method: 'POST',
             body: JSON.stringify({ email, password }),
         });
+
+        if (response.access_token) {
+            this.accessToken = response.access_token;
+            console.log('[API] Login successful, access token stored');
+        }
+        return response;
     }
 
     async logout() {
+        this.accessToken = null;
         return this.request<{ message: string }>('/api/auth/logout/', {
             method: 'POST'
         });

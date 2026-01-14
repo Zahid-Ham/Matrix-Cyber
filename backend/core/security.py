@@ -230,6 +230,18 @@ def create_refresh_token(data: dict, expires_days: int = 7) -> str:
     return create_access_token(data, expires_delta)
 
 
+def create_csrf_token() -> str:
+    """Create a signed CSRF token."""
+    # CSRF tokens are short-lived but reusable for the session
+    return create_access_token({"type": "csrf"}, timedelta(hours=24))
+
+
+def verify_csrf_token(token: str) -> bool:
+    """Verify a signed CSRF token."""
+    payload = decode_token(token)
+    return payload is not None and payload.get("type") == "csrf"
+
+
 def verify_token_signature(token: str) -> bool:
     """
     Verify token signature without checking expiration.
