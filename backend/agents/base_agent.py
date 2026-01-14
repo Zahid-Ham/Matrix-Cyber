@@ -789,6 +789,8 @@ class BaseSecurityAgent(ABC):
                         self.status_code = original_response.status_code
                         self.headers = original_response.headers
                         self.content = content_bytes
+                        self.url = original_response.url  # Required by auth_agent
+                        self.is_error = original_response.is_error if hasattr(original_response, 'is_error') else False
                         self._text = None
                         self._was_truncated = was_truncated
                     
