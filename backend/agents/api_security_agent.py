@@ -735,14 +735,7 @@ class APISecurityAgent(BaseSecurityAgent):
         """
         Test for broken function-level authorization (API5:2023 BFLA).
 
-        Tests access to admin/privileged endpoints.
-
-        Args:
-            target_url: Base URL
-            scan_context: Scan context
-
-        Returns:
-            List of BFLA issues
+        Tests access to admin/privileged endpoints with baseline comparison to avoid SPA FPs.
         """
         results = []
 
@@ -751,54 +744,101 @@ class APISecurityAgent(BaseSecurityAgent):
 
         base_url = target_url if target_url.endswith("/") else f"{target_url}/"
 
+        # 1. Establish a baseline for a non-existent path
+        baseline_path = "non_existent_path_" + str(int(time.time()))
+        baseline_url = urljoin(base_url, baseline_path)
+        baseline_response = None
+        baseline_content = ""
+        baseline_status = 0
+
+        try:
+            baseline_response = await self.make_request(baseline_url)
+            if baseline_response:
+                baseline_status = baseline_response.status_code
+                baseline_content = baseline_response.text
+        except Exception as e:
+            logger.debug(f"[API Agent] Baseline request failed: {e}")
+
+        # 2. Test privileged paths
         for path in self.PRIVILEGED_PATHS:
             clean_path = path.lstrip("/")
             url = urljoin(base_url, clean_path)
 
             try:
-                # Try accessing without authentication
                 response = await self.make_request(url)
+                if not response:
+                    continue
 
-                if response and response.status_code == 200:
-                    results.append(self.create_result(
-                        vulnerability_type=VulnerabilityType.MISSING_AUTHORIZATION,
-                        is_vulnerable=True,
-                        severity=Severity.HIGH,
-                        confidence=80,
-                        url=url,
-                        title="Broken Function Level Authorization (BFLA)",
-                        description=(
-                            f"Administrative/privileged endpoint '{path}' is accessible without proper authorization. "
-                            f"This is OWASP API5:2023 - Broken Function Level Authorization."
-                        ),
-                        evidence=f"GET {url} returned 200 OK without authentication",
-                        likelihood=7.0,
-                        impact=8.0,
-                        exploitability_rationale=(
-                            "Direct access to admin functions. Enables privilege escalation, "
-                            "unauthorized actions, and full system compromise."
-                        ),
-                        remediation=(
-                            "Implement role-based access control (RBAC). Deny access by default. "
-                            "Check user roles/permissions for every sensitive function. "
-                            "Use centralized authorization middleware."
-                        ),
-                        owasp_category="API5:2023 – Broken Function Level Authorization",
-                        cwe_id="CWE-285",
-                        reference_links=[
-                            "https://owasp.org/API-Security/editions/2023/en/0xa5-broken-function-level-authorization/"
-                        ],
-                        vulnerability_context=self._build_api_context(
-                            url, "bfla_broken_function_auth",
-                            f"Privileged endpoint '{path}' accessible without auth",
-                            "admin_access_probe"
-                        )
-                    ))
+                # Ignore if status is not 200, or matches baseline status and content
+                if response.status_code != 200:
+                    continue
+                
+                # Check for SPA shell indicators
+                is_spa = self._is_spa_shell(response.text)
+                
+                # Heuristic: If it matches baseline exactly or is an SPA shell, it's likely a FP
+                similarity = self._calculate_similarity(baseline_content, response.text)
+                
+                if baseline_status == 200 and similarity > 0.9:
+                    logger.debug(f"[API Agent] Skipping BFLA for {url}: Matches baseline (Similarity: {similarity:.2f})")
+                    continue
+                
+                if is_spa:
+                    # If it's an SPA shell, we only report if it's significantly different from baseline
+                    # or if the baseline was NOT a 200 OK (meaning this route is specifically 200)
+                    if baseline_status == 200 and similarity > 0.7:
+                        logger.debug(f"[API Agent] Skipping BFLA for {url}: SPA shell detected (Similarity: {similarity:.2f})")
+                        continue
+
+                # If we get here, it's a potential BFLA
+                results.append(self.create_result(
+                    vulnerability_type=VulnerabilityType.MISSING_AUTHORIZATION,
+                    is_vulnerable=True,
+                    severity=Severity.HIGH,
+                    confidence=90 if not is_spa else 60,
+                    url=url,
+                    title="Broken Function Level Authorization (BFLA)",
+                    description=(
+                        f"Administrative/privileged endpoint '{path}' is accessible without proper authorization. "
+                        f"This is OWASP API5:2023 - Broken Function Level Authorization."
+                    ),
+                    evidence=f"GET {url} returned 200 OK without authentication. (SPA Detected: {is_spa}, Similarity to 404 baseline: {similarity:.2f})",
+                    likelihood=7.0,
+                    impact=8.0,
+                    exploitability_rationale="Direct access to admin functions enabled by missing server-side authorization checks.",
+                    remediation="Implement server-side authorization checks for all privileged endpoints. Use middleware to enforce RBAC.",
+                    owasp_category="API5:2023 – Broken Function Level Authorization",
+                    cwe_id="CWE-285",
+                    reference_links=["https://owasp.org/API-Security/editions/2023/en/0xa5-broken-function-level-authorization/"],
+                    vulnerability_context=self._build_api_context(
+                        url, "bfla_broken_function_auth",
+                        f"Privileged endpoint '{path}' accessible without auth",
+                        "admin_access_probe"
+                    )
+                ))
 
             except Exception as e:
                 logger.debug(f"[API Agent] BFLA test error for {url}: {e}")
 
         return results
+
+    def _is_spa_shell(self, content: str) -> bool:
+        """Check if content looks like a generic SPA index.html shell."""
+        content_lower = content.lower()
+        spa_indicators = [
+            '<div id="root">', 
+            '<div id="app">', 
+            'window.__initial_state__',
+            'dangerouslysetinnerhtml',
+            'react-root',
+            '<script type="module"',
+            'content="website"',
+            'property="og:site_name"' # Generic tags often found in index.html
+        ]
+        
+        # Match if more than 2 indicators are present or it's very short boilerplate
+        count = sum(1 for ind in spa_indicators if ind in content_lower)
+        return count >= 2 or (len(content) < 2000 and "<html" in content_lower and "<script" in content_lower)
 
     async def _validate_header_value(
             self,
