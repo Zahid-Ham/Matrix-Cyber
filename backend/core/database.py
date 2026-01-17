@@ -347,6 +347,22 @@ async def init_db() -> None:
             await _check_and_apply_migrations(conn)
             
         logger.info("Database tables initialized successfully")
+        
+        # Perform health check after initialization
+        is_healthy = await db_config.health_check()
+        if is_healthy:
+            logger.info("Database health check passed")
+        else:
+            logger.warning("Database health check failed after initialization")
+            
+    except SQLAlchemyError as e:
+        logger.error(f"Failed to initialize database tables: {str(e)}", exc_info=True)
+        raise
+    except Exception as e:
+        logger.error(f"Unexpected error during database initialization: {str(e)}", exc_info=True)
+        raise
+
+
 
 async def _check_and_apply_migrations(conn) -> None:
     """
@@ -388,20 +404,7 @@ async def _check_and_apply_migrations(conn) -> None:
     except Exception as e:
         # Don't fail startup if migration fails - might trigger other issues but keep app alive
         logger.error(f"Migration check warning: {e}")
-        
-        # Perform health check after initialization
-        is_healthy = await db_config.health_check()
-        if is_healthy:
-            logger.info("Database health check passed")
-        else:
-            logger.warning("Database health check failed after initialization")
-            
-    except SQLAlchemyError as e:
-        logger.error(f"Failed to initialize database tables: {str(e)}", exc_info=True)
-        raise
-    except Exception as e:
-        logger.error(f"Unexpected error during database initialization: {str(e)}", exc_info=True)
-        raise
+
 
 
 async def close_db() -> None:
