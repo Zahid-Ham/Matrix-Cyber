@@ -246,6 +246,9 @@ class SQLInjectionAgent(BaseSecurityAgent):
         """
         results = []
         tech_stack = technology_stack or []
+        
+        # Store scan_context for auth chaining (token extraction needs this)
+        self.scan_context = scan_context
 
         # Detect database type
         detected_db = self._detect_database_type(tech_stack)
