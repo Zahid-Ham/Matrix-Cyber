@@ -610,9 +610,16 @@ class AgentOrchestrator:
             "Analyzing target..."
         )
 
-        # Discover endpoints if not provided
+        # Discover endpoints if not provided - with global timeout to prevent hangs
         if endpoints is None:
-            endpoints = await self._discover_endpoints(target_url)
+            try:
+                endpoints = await asyncio.wait_for(
+                    self._discover_endpoints(target_url),
+                    timeout=120.0
+                )
+            except asyncio.TimeoutError:
+                logger.warning(f"Reconnaissance timed out for {target_url} after 120s. Using fallback.")
+                endpoints = [{"url": target_url, "method": "GET", "params": {}}]
 
         self.scan_context.discovered_endpoints = endpoints
 

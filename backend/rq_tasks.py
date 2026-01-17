@@ -209,13 +209,25 @@ async def _execute_scan_async(scan_id: int) -> dict:
                 
             except Exception as e:
                 logger.error(f"[RQ Worker] Scan execution failed: {str(e)}", exc_info=True)
-                await db.rollback()
+                # Ensure we rollback before any other DB operations to fix PendingRollbackError
+                try:
+                    await db.rollback()
+                except Exception as rb_err:
+                    logger.error(f"[RQ Worker] Rollback failed: {rb_err}")
                 
-                # Update scan as failed
-                scan.status = ScanStatus.FAILED
-                scan.error_message = str(e)
-                scan.completed_at = datetime.now(timezone.utc)
-                await db.commit()
+                # Update scan as failed in a fresh transaction
+                try:
+                    # Refreshing within the same session after rollback might be tricky,
+                    # but since the session is still active we can try one more commit
+                    scan.status = ScanStatus.FAILED
+                    scan.error_message = str(e)
+                    scan.completed_at = datetime.now(timezone.utc)
+                    await db.commit()
+                except Exception as commit_err:
+                    logger.error(f"[RQ Worker] Failed to update scan status in current session: {commit_err}")
+                    # Last resort: try a fresh session
+                    await _mark_scan_failed(scan_id, str(e))
+                
                 raise
                 
     finally:

@@ -352,16 +352,21 @@ class TargetAnalyzer:
             # Extract scripts
             analysis.scripts = self._extract_scripts(soup, target_url)
             
-            # Discover API documentation
+            # Discover API documentation - ONLY ONCE
             analysis.api_docs = await self._discover_api_docs(target_url)
             
-            # Discover endpoints (concurrent probing)
+            # Discover endpoints (recursive crawling)
             endpoints = await self._discover_endpoints(
                 target_url,
                 soup,
                 response.text,
                 depth=0
             )
+
+            # Probing of common paths - ONLY ONCE
+            common_path_endpoints = await self._probe_common_paths(target_url)
+            endpoints.extend(common_path_endpoints)
+
             
             # Analyze external JavaScript files concurrently
             js_endpoints = await self._analyze_javascript_files(
@@ -757,9 +762,8 @@ class TargetAnalyzer:
                         source="javascript"
                     ))
         
-        # Concurrent probing of common paths
-        common_path_endpoints = await self._probe_common_paths(base_url)
-        endpoints.extend(common_path_endpoints)
+        # Probing removed from here to top-level analyze method to avoid exponential growth
+
         
         # Extract from forms
         for form in soup.find_all("form"):
