@@ -926,18 +926,55 @@ class AgentOrchestrator:
             )
             await self._update_progress(int(progress), f"Phase: {phase.value}")
 
-            # Execute agents in this phase
-            phase_results = await self._execute_phase_agents(
-                phase_agents,
-                target_url,
-                endpoints,
-                technology_stack,
-                completed_agents,
-                set(agent_names)
-            )
-
-            all_results.extend(phase_results)
-            completed_agents.update(phase_agents)
+            # AUTH CHAINING: Split EXPLOITATION into two waves
+            # Wave 1: SQLi runs first to capture auth tokens
+            # Wave 2: Other agents run with captured tokens
+            if phase == AgentPhase.EXPLOITATION and AgentNames.SQL_INJECTION in phase_agents:
+                # Wave 1: Run SQLi first
+                wave1_agents = [AgentNames.SQL_INJECTION]
+                wave2_agents = [a for a in phase_agents if a != AgentNames.SQL_INJECTION]
+                
+                logger.info(f"Auth chaining: Wave 1 - {wave1_agents}")
+                wave1_results = await self._execute_phase_agents(
+                    wave1_agents,
+                    target_url,
+                    endpoints,
+                    technology_stack,
+                    completed_agents,
+                    set(agent_names)
+                )
+                all_results.extend(wave1_results)
+                completed_agents.update(wave1_agents)
+                
+                # Check if auth was captured
+                if self.scan_context and self.scan_context.authenticated:
+                    logger.info(f"Auth chaining: Credentials captured, Wave 2 agents will use auth headers")
+                
+                # Wave 2: Run remaining agents (they will use captured auth)
+                if wave2_agents:
+                    logger.info(f"Auth chaining: Wave 2 - {wave2_agents}")
+                    wave2_results = await self._execute_phase_agents(
+                        wave2_agents,
+                        target_url,
+                        endpoints,
+                        technology_stack,
+                        completed_agents,
+                        set(agent_names)
+                    )
+                    all_results.extend(wave2_results)
+                    completed_agents.update(wave2_agents)
+            else:
+                # Normal phase execution
+                phase_results = await self._execute_phase_agents(
+                    phase_agents,
+                    target_url,
+                    endpoints,
+                    technology_stack,
+                    completed_agents,
+                    set(agent_names)
+                )
+                all_results.extend(phase_results)
+                completed_agents.update(phase_agents)
 
             # MEMORY OPTIMIZATION: Unload agents from this phase
             for agent_name in phase_agents:
