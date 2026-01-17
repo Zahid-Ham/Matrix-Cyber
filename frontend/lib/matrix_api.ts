@@ -194,7 +194,6 @@ export class MatrixApiClient {
         return this.request<User>('/api/auth/me/');
     }
 
-    // Scan endpoints
     async createScan(data: {
         target_url: string;
         target_name?: string;
@@ -202,6 +201,8 @@ export class MatrixApiClient {
         agents_enabled?: string[];
         enable_waf_evasion?: boolean;
         waf_evasion_consent?: boolean;
+        custom_headers?: Record<string, string>;
+        custom_cookies?: Record<string, string>;
     }) {
         return this.request<Scan>('/api/scans/', {
             method: 'POST',
@@ -323,6 +324,10 @@ export interface Scan {
     technology_stack: string[];
     agents_enabled: string[];
     scanned_files?: string[];
+    enable_waf_evasion: boolean;
+    waf_evasion_consent: boolean;
+    custom_headers: Record<string, string> | null;
+    custom_cookies: Record<string, string> | null;
     error_message?: string;
     created_at: string;
     started_at?: string;

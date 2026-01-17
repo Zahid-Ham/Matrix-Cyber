@@ -89,6 +89,10 @@ class ScanContext:
     auth_cookies: Dict[str, str] = field(default_factory=dict)
     auth_headers: Dict[str, str] = field(default_factory=dict)
     
+    # Manual Authentication (User-provided)
+    manual_headers: Dict[str, str] = field(default_factory=dict)
+    manual_cookies: Dict[str, str] = field(default_factory=dict)
+    
     # CSP and security headers
     security_headers: Dict[str, str] = field(default_factory=dict)
     csp_policy: Optional[str] = None

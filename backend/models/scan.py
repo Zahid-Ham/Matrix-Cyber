@@ -182,6 +182,10 @@ class Scan(Base, AuditMixin):
     waf_evasion_consent = Column(Boolean, default=False)  # User acknowledged risks
     waf_evasion_consent_at = Column(DateTime(timezone=True), nullable=True)  # When consent was given
     
+    # Authentication context (Manual overrides)
+    custom_headers = Column(JSON, nullable=True)  # {"Authorization": "Bearer ..."}
+    custom_cookies = Column(JSON, nullable=True)  # {"PHPSESSID": "...", "security": "low"}
+    
     # Relationships
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     user = relationship("User", back_populates="scans")

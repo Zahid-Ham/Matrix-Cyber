@@ -143,7 +143,9 @@ async def _execute_scan_async(scan_id: int) -> dict:
                 results = await orchestrator.run_scan(
                     scan.target_url,
                     agents_enabled=scan.agents_enabled,
-                    scan_id=scan.id
+                    scan_id=scan.id,
+                    custom_headers=scan.custom_headers,
+                    custom_cookies=scan.custom_cookies
                 )
                 
                 # Refresh scan object

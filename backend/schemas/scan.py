@@ -2,7 +2,7 @@
 Scan schemas.
 """
 from pydantic import BaseModel, Field, HttpUrl
-from typing import Optional, List
+from typing import Optional, List, Dict
 from datetime import datetime
 from models.scan import ScanStatus
 
@@ -30,6 +30,14 @@ class ScanCreate(BaseModel):
         default=False,
         description="User acknowledges the risks of WAF evasion testing"
     )
+    
+    # Custom Authentication
+    custom_headers: Optional[Dict[str, str]] = Field(
+        None, description="Custom headers to include in all requests (JSON)"
+    )
+    custom_cookies: Optional[Dict[str, str]] = Field(
+        None, description="Custom cookies to include in all requests (JSON)"
+    )
 
 
 
@@ -56,6 +64,9 @@ class ScanResponse(BaseModel):
     
     # Advanced testing options
     enable_waf_evasion: bool = False
+    
+    custom_headers: Optional[Dict[str, str]] = None
+    custom_cookies: Optional[Dict[str, str]] = None
     
     error_message: Optional[str] = None
     

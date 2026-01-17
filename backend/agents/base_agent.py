@@ -626,6 +626,34 @@ class BaseSecurityAgent(ABC):
         wait_time = AgentConfig.RETRY_BACKOFF_BASE * (2 ** attempt)
         return min(wait_time, AgentConfig.MAX_RETRY_BACKOFF)
 
+    def _check_session_expiry(self, response: Any) -> None:
+        """
+        Check if the response indicates that our session has expired.
+        This provides generic diagnostics for common apps like DVWA.
+        """
+        try:
+            # 1. Check for redirects to login pages (302 found)
+            if response.status_code in (301, 302):
+                location = response.headers.get("Location", "")
+                if "login.php" in location or "login" in location.lower():
+                    logger.warning(
+                        f"[{self.agent_name}] [SCAN {self.scan_context.scan_id if self.scan_context else '?'}] "
+                        f"Session appears expired (redirected to {location})"
+                    )
+
+            # 2. Check for content markers (e.g., DVWA specific)
+            if hasattr(response, 'text'):
+                lower_text = response.text.lower()
+                # DVWA specific check
+                if "damn vulnerable web app" in lower_text and "login" in lower_text:
+                    if "username" in lower_text and "password" in lower_text:
+                        logger.warning(
+                            f"[{self.agent_name}] [SCAN {self.scan_context.scan_id if self.scan_context else '?'}] "
+                            f"Auth lost — login page detected in response body"
+                        )
+        except Exception:
+            pass  # Non-critical diagnostic check
+
     async def make_request(
         self,
         url: str,
@@ -634,45 +662,13 @@ class BaseSecurityAgent(ABC):
         json: Optional[Any] = None,
         headers: Optional[Dict[str, str]] = None,
         params: Optional[Dict[str, Any]] = None,
+        cookies: Optional[Dict[str, str]] = None,
         timeout: Optional[float] = None,
         use_cache: bool = True,
         skip_rate_limit: bool = False
     ) -> Any:
         """
         Make HTTP request with caching, rate limiting, and retry logic.
-
-        This is the primary method for making HTTP requests from agents.
-        It handles:
-        - URL validation
-        - Response caching (for GET requests by default)
-        - Adaptive rate limiting
-        - Automatic retries with exponential backoff
-        - Request statistics tracking
-
-        Args:
-            url: Target URL
-            method: HTTP method (GET, POST, etc.)
-            data: Request body data (form-encoded)
-            json: JSON request body (application/json)
-            headers: Custom request headers
-            params: Query parameters
-            use_cache: Whether to check cache and cache this request
-            skip_rate_limit: Whether to bypass rate limiting
-
-        Returns:
-            Response object or None if all retries failed
-
-        Example:
-            # Simple GET request
-            response = await self.make_request("https://example.com/api/users")
-
-            # POST request with data
-            response = await self.make_request(
-                url="https://example.com/login",
-                method="POST",
-                data={"username": "test", "password": "test123"},
-                use_cache=False  # Don't cache POST requests
-            )
         """
         # Validate URL
         try:
@@ -700,21 +696,55 @@ class BaseSecurityAgent(ABC):
         # Attempt request with retries
         for attempt in range(self.max_retries):
             try:
-                # AUTH CHAINING: Inject auth headers from scan_context if authenticated
+                # MERGE AUTH: Combined Manual Auth + Auth Chaining
                 effective_headers = headers.copy() if headers else {}
-                if self.scan_context and self.scan_context.authenticated and self.scan_context.auth_headers:
-                    # Merge auth headers (don't overwrite explicit headers)
-                    for key, value in self.scan_context.auth_headers.items():
-                        if key not in effective_headers:
-                            effective_headers[key] = value
-                    logger.debug(f"[{self.agent_name}] Auth chaining: Injecting {len(self.scan_context.auth_headers)} auth headers")
+                effective_cookies = cookies.copy() if cookies else {}
                 
+                if self.scan_context:
+                    # 1. Apply manual headers/cookies (User-provided)
+                    if hasattr(self.scan_context, 'manual_headers') and self.scan_context.manual_headers:
+                        for k, v in self.scan_context.manual_headers.items():
+                            if k not in effective_headers:
+                                effective_headers[k] = v
+                    
+                    if hasattr(self.scan_context, 'manual_cookies') and self.scan_context.manual_cookies:
+                        for k, v in self.scan_context.manual_cookies.items():
+                            if k not in effective_cookies:
+                                effective_cookies[k] = v
+
+                    # 2. Apply auth headers/cookies (Auth Chaining - Higher Priority)
+                    if self.scan_context.authenticated:
+                        if self.scan_context.auth_headers:
+                            # Higher priority: Overwrite manual headers if they clash
+                            for k, v in self.scan_context.auth_headers.items():
+                                effective_headers[k] = v
+                        
+                        if self.scan_context.auth_cookies:
+                            for k, v in self.scan_context.auth_cookies.items():
+                                effective_cookies[k] = v
+                                
+                        logger.debug(f"[{self.agent_name}] Auth chaining active: headers={len(self.scan_context.auth_headers)}, cookies={len(self.scan_context.auth_cookies)}")
+                
+                # LOGGING: Log injected auth mechanisms (Keys only for security)
+                if attempt == 0:  # Only log on first attempt to reduce noise
+                    if self.scan_context:
+                        if self.scan_context.manual_headers:
+                            logger.debug(f"[{self.agent_name}] Using custom headers: {list(self.scan_context.manual_headers.keys())}")
+                        if self.scan_context.manual_cookies:
+                            logger.debug(f"[{self.agent_name}] Using custom cookies: {list(self.scan_context.manual_cookies.keys())}")
+                        if self.scan_context.authenticated:
+                            logger.debug(f"[{self.agent_name}] Using auth chain: {list(self.scan_context.auth_headers.keys())}")
+
                 response = await self._execute_request(
-                    url, method, data, json, effective_headers, params, timeout, attempt
+                    url, method, data, json, effective_headers, params, effective_cookies, timeout, attempt
                 )
                 
                 if response:
                     logger.debug(f"[{self.agent_name}] {method} {url} -> {response.status_code} (Length: {len(response.content)})")
+                    
+                    # SESSION EXPIRY DETECTION
+                    # Check if we've been redirected to a login page or see login markers
+                    self._check_session_expiry(response)
                 
                 # Cache successful responses
                 if self.use_caching and use_cache and response.status_code < 500:
@@ -775,6 +805,7 @@ class BaseSecurityAgent(ABC):
             json: Optional[Any],
             headers: Optional[Dict],
             params: Optional[Dict],
+            cookies: Optional[Dict],
             timeout: Optional[float],
             attempt: int
     ) -> Any:
@@ -794,6 +825,7 @@ class BaseSecurityAgent(ABC):
                 json=json,
                 headers=headers,
                 params=params,
+                cookies=cookies,
                 timeout=request_timeout
             ) as stream_response:
                 # Read response up to max size

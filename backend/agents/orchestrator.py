@@ -509,7 +509,9 @@ class AgentOrchestrator:
             agents_enabled: Optional[List[str]] = None,
             endpoints: Optional[List[EndpointDict]] = None,
             technology_stack: Optional[List[str]] = None,
-            scan_id: int = 0
+            scan_id: int = 0,
+            custom_headers: Optional[Dict[str, str]] = None,
+            custom_cookies: Optional[Dict[str, str]] = None
     ) -> List[AgentResult]:
         """
         Execute a comprehensive security scan using dependency graph.
@@ -520,6 +522,8 @@ class AgentOrchestrator:
             endpoints: List of endpoints to test
             technology_stack: Detected technologies
             scan_id: ID of the scan in database
+            custom_headers: Custom HTTP headers to use for all requests
+            custom_cookies: Custom HTTP cookies to use for all requests
 
         Returns:
             List of all vulnerabilities found
@@ -543,7 +547,9 @@ class AgentOrchestrator:
             self.scan_context = ScanContext(
                 scan_id=scan_id,
                 target_url=target_url,
-                technology_stack=technology_stack or []
+                technology_stack=technology_stack or [],
+                manual_headers=custom_headers or {},
+                manual_cookies=custom_cookies or {}
             )
 
             # Phase 1: Reconnaissance

@@ -86,6 +86,8 @@ async def create_scan(
         enable_waf_evasion=enable_waf_evasion,
         waf_evasion_consent=scan_data.waf_evasion_consent,
         waf_evasion_consent_at=waf_consent_at,
+        custom_headers=scan_data.custom_headers,
+        custom_cookies=scan_data.custom_cookies,
     )
     
     db.add(new_scan)
@@ -93,6 +95,16 @@ async def create_scan(
     await db.refresh(new_scan)
     
     logger.info(f"Scan {new_scan.id} created for target: {target_url}")
+    
+    # LOGGING: Audit manual authentication usage (Keys only)
+    if new_scan.custom_headers:
+        logger.info(
+            f"Scan {new_scan.id} initialized with custom headers: {list(new_scan.custom_headers.keys())}"
+        )
+    if new_scan.custom_cookies:
+        logger.info(
+            f"Scan {new_scan.id} initialized with custom cookies: {list(new_scan.custom_cookies.keys())}"
+        )
     
     # Queue scan for execution
     if RQ_AVAILABLE:
