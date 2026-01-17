@@ -343,7 +343,51 @@ async def init_db() -> None:
             # Create all tables
             await conn.run_sync(Base.metadata.create_all)
             
+            # Auto-migrate schema fixes for existing tables
+            await _check_and_apply_migrations(conn)
+            
         logger.info("Database tables initialized successfully")
+
+async def _check_and_apply_migrations(conn) -> None:
+    """
+    Check for missing columns and apply migrations manually.
+    This handles schema updates for environments without Alembic.
+    """
+    try:
+        # Check for custom_headers
+        # Note: information_schema checks work for Postgres. For SQLite we'd need pragma_table_info.
+        if "sqlite" in settings.database_url:
+            # Simple SQLite check/add
+            try:
+                await conn.execute(text("ALTER TABLE scans ADD COLUMN custom_headers JSON"))
+                logger.info("Migrated SQLite: Added custom_headers")
+            except Exception:
+                pass # Column likely exists
+                
+            try:
+                await conn.execute(text("ALTER TABLE scans ADD COLUMN custom_cookies JSON"))
+                logger.info("Migrated SQLite: Added custom_cookies")
+            except Exception:
+                pass # Column likely exists
+        else:
+            # Postgres Migration
+            result = await conn.execute(text(
+                "SELECT column_name FROM information_schema.columns WHERE table_name='scans' AND column_name='custom_headers'"
+            ))
+            if not result.scalar():
+                logger.info("Migrating schema: Adding 'custom_headers' to 'scans' table")
+                await conn.execute(text("ALTER TABLE scans ADD COLUMN custom_headers JSONB"))
+                
+            result = await conn.execute(text(
+                "SELECT column_name FROM information_schema.columns WHERE table_name='scans' AND column_name='custom_cookies'"
+            ))
+            if not result.scalar():
+                logger.info("Migrating schema: Adding 'custom_cookies' to 'scans' table")
+                await conn.execute(text("ALTER TABLE scans ADD COLUMN custom_cookies JSONB"))
+                
+    except Exception as e:
+        # Don't fail startup if migration fails - might trigger other issues but keep app alive
+        logger.error(f"Migration check warning: {e}")
         
         # Perform health check after initialization
         is_healthy = await db_config.health_check()
