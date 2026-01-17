@@ -8,7 +8,7 @@ import asyncio
 from datetime import datetime, timezone
 from typing import Optional
 from redis import Redis
-from rq import Queue
+from rq import Queue, cancel_job
 from sqlalchemy import select
 
 from core.database import async_session_maker
@@ -344,3 +344,30 @@ def get_job_status(job_id: str) -> dict:
     except Exception as e:
         logger.error(f"[RQ] Failed to fetch job {job_id}: {str(e)}")
         return {"error": str(e)}
+def cancel_scan_job(scan_id: int) -> bool:
+    """
+    Cancel a scan job.
+    
+    If the job is enqueued, it will be removed.
+    If the job is currently running, it will be terminated.
+    
+    Args:
+        scan_id: ID of the scan to cancel
+        
+    Returns:
+        True if the job was found and cancellation was attempted
+    """
+    try:
+        redis_conn = get_redis_connection()
+        job_id = f"scan_{scan_id}"
+        
+        # Terminate the job using RQ's built-in command
+        # This handles both queued and running jobs
+        cancel_job(job_id, connection=redis_conn)
+        
+        logger.info(f"[RQ] Cancelled scan job: {job_id}")
+        return True
+        
+    except Exception as e:
+        logger.error(f"[RQ] Failed to cancel scan {scan_id}: {str(e)}")
+        return False

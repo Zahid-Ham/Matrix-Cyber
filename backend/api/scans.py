@@ -267,7 +267,7 @@ async def cancel_scan(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
-    """Cancel a running scan."""
+    """Cancel a running or pending scan."""
     result = await db.execute(
         select(Scan).where(Scan.id == scan_id, Scan.user_id == current_user.id)
     )
@@ -279,16 +279,25 @@ async def cancel_scan(
             detail="Scan not found"
         )
     
-    if scan.status != ScanStatus.RUNNING:
+    # Allow cancelling if background task exists (RUNNING or PENDING)
+    if scan.status not in [ScanStatus.RUNNING, ScanStatus.PENDING]:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Cannot cancel scan with status: {scan.status.value}"
         )
     
+    # Update DB status
     scan.status = ScanStatus.CANCELLED
     scan.completed_at = datetime.now(timezone.utc)
     
     await db.commit()
     await db.refresh(scan)
     
+    # Attempt to cancel the background task
+    if RQ_AVAILABLE:
+        from rq_tasks import cancel_scan_job
+        cancelled = cancel_scan_job(scan_id)
+        if cancelled:
+            logger.info(f"Background job cancelled for scan {scan_id}")
+            
     return ScanResponse.model_validate(scan)

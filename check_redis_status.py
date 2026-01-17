@@ -1,64 +1,49 @@
-
 import os
 import sys
 from redis import Redis
 from rq import Queue, Worker
 
-# Add current directory to path
-sys.path.append(os.getcwd())
-sys.path.append(os.path.join(os.getcwd(), 'backend'))
-
-from backend.config import get_settings
-
 def check_redis():
-    settings = get_settings()
-    print(f"Connecting to Redis: {settings.redis_url}")
+    redis_url = os.getenv('REDIS_URL', 'redis://localhost:6379')
+    print(f"Connecting to Redis: {redis_url}")
     
     try:
-        redis_conn = Redis.from_url(settings.redis_url)
+        redis_conn = Redis.from_url(redis_url)
         redis_conn.ping()
-        print("✅ Successfully connected to Redis")
+        print("Successfully connected to Redis")
         
         # Check queues
-        q = Queue('scans', connection=redis_conn)
-        print(f"Queue 'scans' length: {len(q)}")
+        queues = Queue.all(connection=redis_conn)
+        print(f"Queues ({len(queues)}): {[q.name for q in queues]}")
         
-        # Check jobs
-        jobs = q.jobs
-        for i, job in enumerate(jobs):
-            print(f"  Job {i}: ID={job.id}, Status={job.get_status()}, Created={job.created_at}")
-            
-        # Check workers
-        workers = Worker.all(connection=redis_conn)
-        print(f"Total workers: {len(workers)}")
-        for i, worker in enumerate(workers):
-            print(f"  Worker {i}: Name={worker.name}, Queues={worker.queue_names()}, Key={worker.key}")
+        for q in queues:
+            print(f"Queue '{q.name}' length: {len(q)}")
             
         # Check registries
-        from rq.registry import StartedJobRegistry, FailedJobRegistry, FinishedJobRegistry, ScheduledJobRegistry
-        
+        q_scans = Queue('scans', connection=redis_conn)
         registries = {
-            "Started": StartedJobRegistry('scans', connection=redis_conn),
-            "Failed": FailedJobRegistry('scans', connection=redis_conn),
-            "Finished": FinishedJobRegistry('scans', connection=redis_conn),
-            "Scheduled": ScheduledJobRegistry('scans', connection=redis_conn)
+            "Started": q_scans.started_job_registry,
+            "Failed": q_scans.failed_job_registry,
+            "Deferred": q_scans.deferred_job_registry,
+            "Scheduled": q_scans.scheduled_job_registry,
+            "Finished": q_scans.finished_job_registry,
         }
         
         for name, registry in registries.items():
             ids = registry.get_job_ids()
             print(f"{name} jobs ({len(ids)}):")
             for jid in ids:
-                print(f"  - {jid}")
-                if name == "Failed":
+                try:
                     from rq.job import Job
-                    try:
-                        job = Job.fetch(jid, connection=redis_conn)
-                        print(f"    Error: {job.exc_info}")
-                    except:
-                        pass
+                    job = Job.fetch(jid, connection=redis_conn)
+                    print(f"  - {jid}: Status={job.get_status()}, Enqueued={job.enqueued_at}")
+                    if name == "Failed":
+                        print(f"    Error Trace: {job.exc_info}")
+                except Exception as e:
+                    print(f"  - {jid}: Error fetching job: {e}")
             
     except Exception as e:
-        print(f"❌ Error: {e}")
+        print(f"Error: {e}")
 
 if __name__ == "__main__":
     check_redis()
