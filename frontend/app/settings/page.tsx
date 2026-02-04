@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { api } from "@/lib/matrix_api";
+import { Navbar } from "@/components/Navbar";
 import GitHubTokenGuide from "@/components/GitHubTokenGuide";
 import { CheckCircle, XCircle, Loader2, Trash2, RefreshCw, Key } from "lucide-react";
 
@@ -93,35 +94,43 @@ export default function SettingsPage() {
     };
 
     return (
-        <div className="min-h-screen bg-background-primary">
-            <div className="max-w-4xl mx-auto px-6 py-8">
-                <div className="mb-8">
-                    <h1 className="text-3xl font-bold text-text-primary mb-2">Settings</h1>
-                    <p className="text-text-secondary">Manage your Matrix configuration and integrations</p>
+        <div className="min-h-screen bg-bg-primary">
+            <Navbar />
+
+            <main className="max-w-4xl mx-auto px-6 py-20">
+                <div className="mb-12 text-center">
+                    <h1 className="text-5xl font-serif font-medium text-text-primary tracking-tight mb-4">
+                        Settings
+                    </h1>
+                    <p className="text-text-secondary text-lg">
+                        Manage your Matrix configuration and integrations
+                    </p>
                 </div>
 
                 {/* GitHub Integration Section */}
-                <div className="bg-surface-primary border border-warm-200 rounded-lg p-6 shadow-sm">
-                    <div className="flex items-center gap-3 mb-6">
-                        <Key className="w-6 h-6 text-primary-600" />
+                <div className="glass-card p-8 border-2 border-accent-primary/20 shadow-xl">
+                    <div className="flex items-center gap-3 mb-8">
+                        <div className="w-14 h-14 rounded-2xl bg-accent-primary/10 flex items-center justify-center">
+                            <Key className="w-7 h-7 text-accent-primary" />
+                        </div>
                         <div>
-                            <h2 className="text-xl font-semibold text-text-primary">GitHub Integration</h2>
+                            <h2 className="text-2xl font-serif font-medium text-text-primary">GitHub Integration</h2>
                             <p className="text-sm text-text-secondary">Configure your Personal Access Token for self-healing features</p>
                         </div>
                     </div>
 
                     {/* Token Status */}
                     {tokenStatus && tokenStatus.configured && (
-                        <div className="mb-6 p-4 bg-warm-50 border border-warm-200 rounded-lg">
+                        <div className="mb-6 p-5 glass-card border-2 border-warm-200/50">
                             <div className="flex items-center justify-between">
                                 <div className="flex items-center gap-3">
                                     {tokenStatus.valid ? (
-                                        <CheckCircle className="w-5 h-5 text-success-600" />
+                                        <CheckCircle className="w-6 h-6 text-green-500" />
                                     ) : (
-                                        <XCircle className="w-5 h-5 text-error-600" />
+                                        <XCircle className="w-6 h-6 text-red-500" />
                                     )}
                                     <div>
-                                        <p className="text-sm font-medium text-text-primary">
+                                        <p className="text-sm font-semibold text-text-primary">
                                             {tokenStatus.valid ? "Token Active" : "Token Invalid"}
                                         </p>
                                         {tokenStatus.username && (
@@ -138,7 +147,7 @@ export default function SettingsPage() {
                                     <button
                                         onClick={handleValidateToken}
                                         disabled={validating}
-                                        className="flex items-center gap-2 px-3 py-1.5 text-sm bg-primary-50 text-primary-700 rounded-md hover:bg-primary-100 disabled:opacity-50"
+                                        className="flex items-center gap-2 px-4 py-2 text-sm bg-accent-primary/10 text-accent-primary rounded-lg hover:bg-accent-primary/20 disabled:opacity-50 transition-colors font-medium"
                                     >
                                         {validating ? (
                                             <Loader2 className="w-4 h-4 animate-spin" />
@@ -150,7 +159,7 @@ export default function SettingsPage() {
                                     <button
                                         onClick={handleDeleteToken}
                                         disabled={loading}
-                                        className="flex items-center gap-2 px-3 py-1.5 text-sm bg-error-50 text-error-700 rounded-md hover:bg-error-100 disabled:opacity-50"
+                                        className="flex items-center gap-2 px-4 py-2 text-sm bg-red-500/10 text-red-500 rounded-lg hover:bg-red-500/20 disabled:opacity-50 transition-colors font-medium"
                                     >
                                         <Trash2 className="w-4 h-4" />
                                         Delete
@@ -164,9 +173,9 @@ export default function SettingsPage() {
                     <GitHubTokenGuide />
 
                     {/* Token Input Form */}
-                    <form onSubmit={handleSaveToken} className="space-y-4">
+                    <form onSubmit={handleSaveToken} className="space-y-6">
                         <div>
-                            <label htmlFor="github-token" className="block text-sm font-medium text-text-primary mb-2">
+                            <label htmlFor="github-token" className="block text-sm font-semibold text-text-primary mb-3">
                                 GitHub Personal Access Token
                             </label>
                             <input
@@ -175,10 +184,10 @@ export default function SettingsPage() {
                                 value={token}
                                 onChange={(e) => setToken(e.target.value)}
                                 placeholder="ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-                                className="w-full px-4 py-2 bg-white border border-warm-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent text-text-primary placeholder-text-muted"
+                                className="w-full px-4 py-3 bg-surface-primary/50 border-2 border-warm-300/50 rounded-lg focus:outline-none focus:ring-2 focus:ring-accent-primary focus:border-accent-primary text-text-primary placeholder-text-muted transition-all"
                                 disabled={loading}
                             />
-                            <p className="mt-1 text-xs text-text-muted">
+                            <p className="mt-2 text-xs text-text-muted">
                                 Your token will be encrypted before storage and only used for creating issues and pull requests on your behalf.
                             </p>
                         </div>
@@ -186,24 +195,24 @@ export default function SettingsPage() {
                         {/* Message Display */}
                         {message && (
                             <div
-                                className={`p-3 rounded-lg ${message.type === "success"
-                                        ? "bg-success-50 border border-success-200 text-success-800"
-                                        : "bg-error-50 border border-error-200 text-error-800"
+                                className={`p-4 rounded-lg border-2 ${message.type === "success"
+                                    ? "bg-green-500/10 border-green-500/30 text-green-600"
+                                    : "bg-red-500/10 border-red-500/30 text-red-600"
                                     }`}
                             >
-                                <p className="text-sm">{message.text}</p>
+                                <p className="text-sm font-medium">{message.text}</p>
                             </div>
                         )}
 
                         <button
                             type="submit"
                             disabled={loading || !token.trim()}
-                            className="w-full flex items-center justify-center gap-2 px-6 py-3 bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed font-medium transition-colors"
+                            className="w-full flex items-center justify-center gap-2 px-6 py-4 bg-accent-primary text-white rounded-lg hover:bg-accent-primary/90 disabled:opacity-50 disabled:cursor-not-allowed font-semibold text-lg transition-all shadow-lg hover:shadow-xl hover:-translate-y-0.5"
                         >
                             {loading ? (
                                 <>
                                     <Loader2 className="w-5 h-5 animate-spin" />
-                                    Saving...
+                                    Saving Token...
                                 </>
                             ) : (
                                 <>
@@ -215,17 +224,29 @@ export default function SettingsPage() {
                     </form>
 
                     {/* Info Box */}
-                    <div className="mt-6 p-4 bg-info-50 border border-info-200 rounded-lg">
-                        <h3 className="text-sm font-semibold text-info-900 mb-2">Why configure a GitHub token?</h3>
-                        <ul className="text-xs text-info-800 space-y-1 list-disc list-inside">
-                            <li>Enable self-healing features to create pull requests on your repositories</li>
-                            <li>Report security findings as GitHub issues automatically</li>
-                            <li>Your token is used instead of the system token, giving you full control</li>
-                            <li>All actions are performed under your GitHub account for better audit trails</li>
+                    <div className="mt-8 p-6 glass-card border-2 border-accent-gold/20">
+                        <h3 className="text-sm font-bold uppercase tracking-widest text-accent-gold mb-3">Why configure a GitHub token?</h3>
+                        <ul className="text-sm text-text-secondary space-y-2">
+                            <li className="flex items-start gap-2">
+                                <span className="text-accent-gold mt-1">•</span>
+                                <span>Enable self-healing features to create pull requests on your repositories</span>
+                            </li>
+                            <li className="flex items-start gap-2">
+                                <span className="text-accent-gold mt-1">•</span>
+                                <span>Report security findings as GitHub issues automatically</span>
+                            </li>
+                            <li className="flex items-start gap-2">
+                                <span className="text-accent-gold mt-1">•</span>
+                                <span>Your token is used instead of the system token, giving you full control</span>
+                            </li>
+                            <li className="flex items-start gap-2">
+                                <span className="text-accent-gold mt-1">•</span>
+                                <span>All actions are performed under your GitHub account for better audit trails</span>
+                            </li>
                         </ul>
                     </div>
                 </div>
-            </div>
+            </main>
         </div>
     );
 }
