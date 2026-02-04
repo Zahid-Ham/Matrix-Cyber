@@ -8,6 +8,7 @@ and intelligent result correlation.
 import asyncio
 import logging
 import re
+import json
 from typing import List, Dict, Any, Optional, Set, Callable, TypedDict
 from datetime import datetime, timezone
 from enum import Enum
@@ -19,6 +20,8 @@ from .github_agent import GithubSecurityAgent
 from models.scan import Scan, ScanStatus
 from models.vulnerability import Vulnerability, Severity, VulnerabilityType
 from core.scan_context import ScanContext, AgentPhase
+from core.forensics_manager import forensic_manager
+from core.database import async_session_maker
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -552,6 +555,11 @@ class AgentOrchestrator:
                 manual_cookies=custom_cookies or {}
             )
 
+            # Initialize Forensics
+            async with async_session_maker() as db:
+                await forensic_manager.initialize_forensic_session(scan_id, db)
+                await db.commit()
+
             # Phase 1: Reconnaissance
             await self._execute_reconnaissance_phase(
                 target_url, endpoints, technology_stack
@@ -582,9 +590,24 @@ class AgentOrchestrator:
 
         except Exception as e:
             logger.error(f"Scan error: {e}", exc_info=True)
+            async with async_session_maker() as db:
+                await forensic_manager.log_timeline_event(
+                    scan_id=scan_id,
+                    event_type="SCAN_ERROR",
+                    source="AgentOrchestrator",
+                    description=f"Scan encountered a critical error: {str(e)}",
+                    db=db
+                )
             raise OrchestratorError(f"Scan failed: {e}")
         finally:
             self.is_running = False
+            # Finalize forensic session
+            try:
+                async with async_session_maker() as db:
+                    await forensic_manager.finalize_forensic_session(scan_id, db)
+                    await db.commit()
+            except Exception as fe:
+                logger.error(f"Forensic finalization failed: {fe}")
 
     def _initialize_scan_state(self) -> None:
         """Initialize state for a new scan."""
@@ -629,14 +652,38 @@ class AgentOrchestrator:
 
         self.scan_context.discovered_endpoints = endpoints
 
-        logger.info(f"Target: {target_url}")
-        logger.info(f"Discovered endpoints: {len(endpoints)}")
-
-        # Detect technology if not provided
-        if technology_stack is None:
-            technology_stack = await self._detect_technology(target_url)
-
         self.scan_context.technology_stack = technology_stack
+
+        # [COMPREHENSIVE FORENSICS] Log Reconnaissance to Forensics
+        async with async_session_maker() as f_db:
+            await forensic_manager.record_artifact(
+                scan_id=self.scan_context.scan_id,
+                name="Reconnaissance Evidence Bundle",
+                artifact_type="RECONNAISSANCE_DATA",
+                data=json.dumps({
+                    "target": target_url,
+                    "endpoints_count": len(endpoints) if endpoints else 0,
+                    "technologies": technology_stack or [],
+                    "discovery_method": "TargetAnalyzer"
+                }, indent=2),
+                db=f_db,
+                metadata={
+                    "endpoints": endpoints,
+                    "tech_stack": technology_stack,
+                    "repository": target_url,
+                    "scan_id": self.scan_context.scan_id,
+                    "ai_reasoning": f"Reconnaissance complete. Analyzed {target_url} and discovered {len(endpoints) if endpoints else 0} interactive endpoints. The technology fingerprint suggests a stack involving: {', '.join(technology_stack) if technology_stack else 'modular web components'}."
+                }
+            )
+            
+            await forensic_manager.log_timeline_event(
+                scan_id=self.scan_context.scan_id,
+                event_type="RECON_COMPLETE",
+                source="Orchestrator",
+                description=f"Reconnaissance finished. Discovered {len(endpoints) if endpoints else 0} endpoints and {len(technology_stack or [])} technologies.",
+                db=f_db
+            )
+            await f_db.commit()
 
         await self._update_progress(
             OrchestratorConfig.PROGRESS_DISCOVERY_COMPLETE,
@@ -1284,8 +1331,34 @@ class AgentOrchestrator:
 
         # Notify about found vulnerabilities
         for result in results:
-            if result.is_vulnerable and self.on_vulnerability_found:
-                await self.on_vulnerability_found(result)
+            if result.is_vulnerable:
+                # Log finding to forensics automatically
+                try:
+                    async with async_session_maker() as f_db:
+                        # Log finding as a forensic artifact
+                        scan_id = self.scan_context.scan_id if self.scan_context else 0
+                        if scan_id == 0:
+                            logger.error(f"Cannot record forensic finding: scan_id is 0. Context: {self.scan_context}")
+                            return results
+
+                        await forensic_manager.record_artifact(
+                            scan_id=scan_id,
+                            name=f"Vulnerability: {result.title}",
+                            artifact_type="VULNERABILITY_RESULT",
+                            data=f"--- AI REASONING ---\n{result.ai_analysis}\n\n--- TECHNICAL EVIDENCE ---\n{result.evidence}",
+                            db=f_db,
+                            metadata={
+                                **result.to_dict(),
+                                "is_finding": True,
+                                "ai_reasoning": result.ai_analysis
+                            }
+                        )
+                        await f_db.commit()
+                except Exception as fe:
+                    logger.error(f"Forensic recording of finding failed: {fe}")
+
+                if self.on_vulnerability_found:
+                    await self.on_vulnerability_found(result)
 
         logger.info(f"{agent.agent_name} found {len(results)} issues")
         return results

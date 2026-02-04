@@ -280,6 +280,11 @@ class AgentResult:
     # OWASP Mapping
     owasp_category: str = ""
     cwe_id: str = ""
+    compliance_mapping: Dict[str, str] = field(default_factory=dict)
+    
+    # Advanced Forensic Fields
+    root_cause: str = ""
+    business_impact: str = ""
 
     # Metadata
     detected_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
@@ -332,6 +337,9 @@ class AgentResult:
             "reference_links": self.reference_links,
             "owasp_category": self.owasp_category,
             "cwe_id": self.cwe_id,
+            "compliance_mapping": self.compliance_mapping,
+            "root_cause": self.root_cause,
+            "business_impact": self.business_impact,
             "detected_at": self.detected_at.isoformat(),
             "cvss_score": self.cvss_score,
             "cvss_vector": self.cvss_vector,
@@ -348,6 +356,7 @@ class AgentResult:
             "is_false_positive": self.is_false_positive,
             "suppression_reason": self.suppression_reason,
             "scope_impact": self.scope_impact,
+            "file_path": self.file_path,
         }
 
 
@@ -1076,11 +1085,22 @@ class BaseSecurityAgent(ABC):
                 "severity": "CRITICAL"|"HIGH"|"MEDIUM"|"LOW"|"INFO",
                 "title": "Concise Technical Title",
                 "description": "Detailed technical explanation of the finding",
-                "reason": "Why you believe this is or is not a vulnerability",
-                "remediation": "Brief high-level fix guidance",
+                "reason": "Comprehensive technical analysis. You MUST provide exactly 4 Markdown bullet points (using '-') detailing: 1) The exact signal detected, 2) The exploitability factor, 3) The potential data/system risk, and 4) Why this is not a false positive. Ensure each point is concise and impactful.",
+                "root_cause": "The underlying technical flaw (e.g., missing input validation, insecure configuration)",
+                "business_impact": "Impact on business operations, data privacy, and reputation",
+                "compliance_mapping": {{
+                    "owasp": "OWASP Top 10 category",
+                    "cwe": "CWE-ID",
+                    "nist": "Optional NIST framework mapping"
+                }},
+                "remediation": {{
+                    "short_term": "Immediate fix to mitigate risk",
+                    "long_term": "Strategic architectural improvement to prevent recurrence",
+                    "code_example": "Optional code snippet illustrating the fix"
+                }},
                 "likelihood": float (0.0-10.0),
                 "impact": float (0.0-10.0),
-                "exploitability_rationale": "Why this is easy or hard to exploit"
+                "exploitability_rationale": "Detailed explanation of attack requirements and difficulty"
             }}
             """
             
@@ -1368,6 +1388,11 @@ class BaseSecurityAgent(ABC):
             title=title,
             description=description,
             ai_analysis=ai_analysis.get("reason", ""),
+            root_cause=ai_analysis.get("root_cause", ""),
+            business_impact=ai_analysis.get("business_impact", ""),
+            compliance_mapping=ai_analysis.get("compliance_mapping", {}),
+            remediation=ai_analysis.get("remediation", {}).get("short_term", "") if isinstance(ai_analysis.get("remediation"), dict) else ai_analysis.get("remediation", ""),
+            remediation_code=ai_analysis.get("remediation", {}).get("code_example", "") if isinstance(ai_analysis.get("remediation"), dict) else "",
             likelihood=likelihood,
             impact=impact,
             exploitability_rationale=exploitability,

@@ -15,7 +15,7 @@ from slowapi.middleware import SlowAPIMiddleware
 
 from config import get_settings
 from core.database import init_db, close_db
-from api import auth_router, scans_router, vulnerabilities_router, chatbot_router, test_bench
+from api import auth_router, scans_router, vulnerabilities_router, chatbot_router, forensics_router, test_bench, github_settings_router
 from agents.orchestrator import orchestrator
 
 settings = get_settings()
@@ -44,21 +44,18 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         response = await call_next(request)
         
-        # In Debug/Dev mode, skip strict security headers to avoid CORS/Fetch issues on localhost
-        if settings.debug:
-            return response
-
-        # Generate unique CSP nonce per response (NEVER reuse)
-        nonce = secrets.token_urlsafe(16)
-        
-        # Prevent MIME sniffing attacks
+        # Prevent MIME sniffing attacks (Always required)
         response.headers["X-Content-Type-Options"] = "nosniff"
         
-        # Prevent clickjacking/UI redressing
+        # Prevent clickjacking/UI redressing (Always required)
         response.headers["X-Frame-Options"] = "DENY"
         
-        # Control referrer information leakage
+        # Control referrer information leakage (Always required)
         response.headers["Referrer-Policy"] = "no-referrer-when-downgrade"
+
+        # In Debug/Dev mode, skip more restrictive security headers
+        if settings.debug:
+            return response
         
         # Content Security Policy - restrictive for API-only service
         if self.API_ONLY_MODE:
@@ -300,7 +297,9 @@ app.include_router(auth_router, prefix="/api")
 app.include_router(scans_router, prefix="/api")
 app.include_router(vulnerabilities_router, prefix="/api")
 app.include_router(chatbot_router, prefix="/api")
-app.include_router(test_bench.router, prefix="/api")
+app.include_router(forensics_router, prefix="/api")
+app.include_router(github_settings_router, prefix="/api")
+app.include_router(test_bench, prefix="/api")
 
 
 # Exception handlers

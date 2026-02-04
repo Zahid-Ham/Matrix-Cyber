@@ -151,6 +151,18 @@ export class MatrixApiClient {
         full_name?: string;
         company?: string;
     }) {
+        console.log('[API] Registration attempt starting...');
+
+        // Ensure CSRF token before registration
+        if (!this.csrfToken) {
+            console.log('[API] Fetching CSRF token before registration...');
+            try {
+                await this.ensureCsrf();
+            } catch (e) {
+                console.warn('[API] CSRF fetch failed, continuing with cookie fallback');
+            }
+        }
+
         const response = await this.request<{
             access_token: string;
             user: User;
@@ -167,6 +179,18 @@ export class MatrixApiClient {
     }
 
     async login(email: string, password: string) {
+        console.log('[API] Login attempt starting...');
+
+        // Ensure CSRF token before login
+        if (!this.csrfToken) {
+            console.log('[API] Fetching CSRF token before login...');
+            try {
+                await this.ensureCsrf();
+            } catch (e) {
+                console.warn('[API] CSRF fetch failed, continuing with cookie fallback');
+            }
+        }
+
         // Response contains token for backward compat, but cookies are set
         const response = await this.request<{
             access_token: string;
@@ -294,6 +318,44 @@ export class MatrixApiClient {
             method: 'POST',
         });
     }
+
+    // Forensics & Self-Healing
+    async selfHealArtifact(scanId: string, artifactId: string) {
+        return this.request<any>(`/api/forensics/${scanId}/artifacts/${artifactId}/self-heal/`, {
+            method: 'POST',
+        });
+    }
+
+    async reportIssue(scanId: string, artifactId: string) {
+        return this.request<any>(`/api/forensics/${scanId}/artifacts/${artifactId}/report-issue/`, {
+            method: 'POST',
+        });
+    }
+
+    // ==================== GitHub Token Management ====================
+
+    async saveGitHubToken(token: string): Promise<{ message: string; username: string; configured: boolean }> {
+        return this.request('/api/auth/settings/github-token/', {
+            method: 'POST',
+            body: JSON.stringify({ token }),
+        });
+    }
+
+    async getGitHubTokenStatus(): Promise<{ configured: boolean; username?: string; valid: boolean; last_validated?: string }> {
+        return this.request('/api/auth/settings/github-token/status/');
+    }
+
+    async deleteGitHubToken(): Promise<{ message: string }> {
+        return this.request('/api/auth/settings/github-token/', {
+            method: 'DELETE',
+        });
+    }
+
+    async validateGitHubToken(): Promise<{ valid: boolean; username?: string; message: string }> {
+        return this.request('/api/auth/settings/github-token/validate/', {
+            method: 'POST',
+        });
+    }
 }
 
 // Types
@@ -378,6 +440,8 @@ export interface Vulnerability {
     detected_at: string;
     scan_id: number;
 }
+
+
 
 // Export singleton instance
 export const api: MatrixApiClient = new MatrixApiClient();

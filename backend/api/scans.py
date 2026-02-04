@@ -28,8 +28,9 @@ try:
     logger.info("RQ task queue available - using distributed workers")
 except ImportError:
     RQ_AVAILABLE = False
-    from workers import run_scan_task
     logger.warning("RQ not available - falling back to BackgroundTasks")
+
+
 
 
 router = APIRouter(prefix="/scans", tags=["Scans"])
@@ -107,6 +108,7 @@ async def create_scan(
         )
     
     # Queue scan for execution
+    from workers import _run_scan_async
     if RQ_AVAILABLE:
         job_id = enqueue_scan(new_scan.id)
         if job_id:
@@ -114,10 +116,10 @@ async def create_scan(
         else:
             # Fallback if enqueue fails
             logger.warning(f"RQ enqueue failed for scan {new_scan.id}, using BackgroundTasks")
-            background_tasks.add_task(run_scan_task, new_scan.id)
+            background_tasks.add_task(_run_scan_async, new_scan.id)
     else:
         # Fallback to BackgroundTasks
-        background_tasks.add_task(run_scan_task, new_scan.id)
+        background_tasks.add_task(_run_scan_async, new_scan.id)
         logger.info(f"Scan {new_scan.id} queued via BackgroundTasks (fallback)")
     
     return ScanResponse.model_validate(new_scan)

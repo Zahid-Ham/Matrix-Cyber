@@ -13,12 +13,16 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone, timedelta
 from collections import defaultdict
 import logging
+import base64
 from .dependency_parser import DependencyParser, ParsedDependency
 
 from .base_agent import BaseSecurityAgent, AgentResult
 from models.vulnerability import Severity, VulnerabilityType
 from core.groq_client import repo_generate, groq_manager, ModelTier
 from scoring import VulnerabilityContext, ConfidenceMethod
+
+from core.forensics_manager import forensic_manager
+from core.database import async_session_maker
 
 if TYPE_CHECKING:
     from core.scan_context import ScanContext
@@ -452,6 +456,16 @@ class GithubSecurityAgent(BaseSecurityAgent):
             default_branch = await self._get_default_branch(owner, repo)
             
             # 2. Reconnaissance
+            async with async_session_maker() as db:
+                await forensic_manager.log_timeline_event(
+                    scan_id=scan_context.scan_id if scan_context else 0,
+                    event_type="REPO_SCAN_STARTED",
+                    source="GithubSecurityAgent",
+                    description=f"Starting SAST analysis for {owner}/{repo} (Default Branch: {default_branch})",
+                    db=db
+                )
+                await db.commit()
+
             files = await self._fetch_repo_files(owner, repo, default_branch)
             if not files:
                 return []
@@ -461,6 +475,21 @@ class GithubSecurityAgent(BaseSecurityAgent):
             raw_hotspots = await self._get_hotspots_via_ai(files, owner, repo, default_branch)
             hotspots = {h.strip('/') for h in raw_hotspots}
             logger.info(f"AI identified {len(hotspots)} potential hotspots")
+            
+            async with async_session_maker() as db:
+                await forensic_manager.record_artifact(
+                    scan_id=scan_context.scan_id if scan_context else 0,
+                    name="AI Hotspot Detection",
+                    artifact_type="RECON_DATA",
+                    data=json.dumps(list(hotspots), indent=2),
+                    db=db,
+                    metadata={
+                        "hotspot_count": len(hotspots),
+                        "repository": target_url,
+                        "ai_reasoning": f"AI logic prioritized {len(hotspots)} code hotspots for deep audit. These paths were selected based on high probability of containing state-management, credential-handling, or critical business logic."
+                    }
+                )
+                await db.commit()
 
             # 4. Static Scan + Content Fetching
             limit = GithubAgentConfig.MAX_FILES_TO_SCAN
@@ -493,6 +522,29 @@ class GithubSecurityAgent(BaseSecurityAgent):
                 results.extend(dep_results)
 
             self._log_scan_statistics(owner, repo)
+
+            # 7. Record each finding as a Forensic Artifact for Self-Healing access
+            if scan_context and results:
+                async with async_session_maker() as db:
+                    for result in results:
+                        if result.is_vulnerable:
+                            await forensic_manager.record_artifact(
+                                scan_id=scan_context.scan_id,
+                                name=f"Finding: {result.title}",
+                                artifact_type="GITHUB_SECURITY",
+                                data=result.description,
+                                db=db,
+                                metadata={
+                                    "repository": target_url,
+                                    "file_path": result.file_path,
+                                    "severity": result.severity.value,
+                                    "vulnerability_type": result.vulnerability_type.value,
+                                    "ai_analysis": result.ai_analysis,
+                                    "remediation": result.remediation,
+                                    "ai_reasoning": f"Detected a {result.severity.value} risk in `{result.file_path}`. This issue was identified via code pattern analysis and confirmed to be a potential security hotspot. Matrix Autopilot is ready to remediate this vulnerability."
+                                }
+                            )
+                    await db.commit()
 
         except Exception as e:
             logger.error(f"Error scanning repository {owner}/{repo}: {e}", exc_info=True)
@@ -553,6 +605,177 @@ class GithubSecurityAgent(BaseSecurityAgent):
             file_sha=sha
         )
 
+    # ==================== GitHub Autopilot (Self-Healing) ====================
+
+    async def generate_remediation_patch(self, file_path: str, content: str, vulnerability: str) -> str:
+        """Use AI to generate a fixed version of the file."""
+        prompt = f"""
+        REMEDIATION TASK: Fix a security vulnerability in the following file.
+        
+        FILE PATH: {file_path}
+        VULNERABILITY: {vulnerability}
+        
+        ORIGINAL CONTENT:
+        ---
+        {content}
+        ---
+        
+        INSTRUCTION:
+        Provide the ENTIRE file content with the security fix applied. 
+        Ensure you maintain the original logic and formatting, only changing what's necessary for the fix.
+        Output ONLY the raw code, no markdown blocks, no explanations.
+        """
+        
+        try:
+            # We use repo_generate which is optimized for code
+            response = await repo_generate(prompt=prompt)
+            fixed_code = response.get("content", "").strip()
+            
+            # Basic sanity check: if AI wrapped it in markdown code blocks, strip them
+            if fixed_code.startswith("```"):
+                lines = fixed_code.splitlines()
+                if lines[0].startswith("```"): lines = lines[1:]
+                if lines and lines[-1].startswith("```"): lines = lines[:-1]
+                fixed_code = "\n".join(lines).strip()
+                
+            return fixed_code
+            
+        except Exception as e:
+            logger.error(f"Error generating remediation patch: {e}")
+            return f"Error generating patch: {str(e)}"
+    async def create_github_issue(self, owner: str, repo: str, title: str, body: str) -> Dict[str, Any]:
+        """Create a new GitHub issue for a finding."""
+        url = f"https://api.github.com/repos/{owner}/{repo}/issues"
+        data = {
+            "title": title,
+            "body": body,
+            "labels": ["security", "matrix-autopilot"]
+        }
+        
+        async with httpx.AsyncClient() as client:
+            resp = await self._make_github_request(client, url, method="POST", json_data=data)
+            if not resp or resp.status_code != 201:
+                error_detail = resp.json() if resp else "No response"
+                logger.error(f"Failed to create GitHub issue: {error_detail}")
+                return {"status": "failed", "error": str(error_detail)}
+            
+            issue_data = resp.json()
+            return {
+                "status": "success",
+                "issue_url": issue_data["html_url"],
+                "issue_number": issue_data["number"]
+            }
+
+    async def execute_self_healing(self, owner: str, repo: str, file_path: str, vulnerability_title: str, vulnerability_id: str, issue_number: Optional[int] = None) -> Dict[str, Any]:
+        """Orchestrate the Self-Healing flow: fix code, push branch, open PR."""
+        logger.info(f"🚀 Initializing GitHub Autopilot for {file_path} in {owner}/{repo}")
+        
+        try:
+            async with httpx.AsyncClient() as client:
+                # 1. Get original content and default branch
+                default_branch = await self._get_default_branch(owner, repo)
+                content_url = f"https://api.github.com/repos/{owner}/{repo}/contents/{file_path}?ref={default_branch}"
+                
+                resp = await self._make_github_request(client, content_url)
+                if not resp or resp.status_code != 200:
+                    raise Exception(f"Could not fetch file content: {resp.status_code if resp else 'No response'}")
+                
+                file_data = resp.json()
+                original_content = base64.b64decode(file_data['content']).decode('utf-8')
+                original_sha = file_data['sha']
+                
+                # 2. Generate Fix via AI
+                fixed_content = await self.generate_remediation_patch(file_path, original_content, vulnerability_title)
+                if not fixed_content or len(fixed_content) < 10:
+                    raise Exception("AI generated an invalid or empty patch")
+                
+                # 3. Create a new branch
+                branch_name = f"matrix-fix-{vulnerability_id[:8]}-{datetime.now().strftime('%H%M%S')}"
+                
+                # Get base branch SHA
+                base_ref_url = f"https://api.github.com/repos/{owner}/{repo}/git/refs/heads/{default_branch}"
+                resp = await self._make_github_request(client, base_ref_url)
+                if not resp or resp.status_code != 200:
+                    raise Exception("Could not fetch base branch ref")
+                
+                base_sha = resp.json()['object']['sha']
+                
+                # Create branch
+                create_ref_url = f"https://api.github.com/repos/{owner}/{repo}/git/refs"
+                resp = await self._make_github_request(client, create_ref_url, method="POST", json_data={
+                    "ref": f"refs/heads/{branch_name}",
+                    "sha": base_sha
+                })
+                
+                if not resp or resp.status_code != 201:
+                    raise Exception(f"Failed to create branch: {resp.text if resp else 'No response'}")
+                
+                # 4. Push the fix
+                update_url = f"https://api.github.com/repos/{owner}/{repo}/contents/{file_path}"
+                resp = await self._make_github_request(client, update_url, method="PUT", json_data={
+                    "message": f"🛡️ [Matrix Autopilot] Fix for {vulnerability_title}",
+                    "content": base64.b64encode(fixed_content.encode('utf-8')).decode('utf-8'),
+                    "sha": original_sha,
+                    "branch": branch_name
+                })
+                
+                if not resp or resp.status_code != 200:
+                    raise Exception(f"Failed to push fix: {resp.text if resp else 'No response'}")
+                
+                # 5. Open Pull Request
+                pr_url = f"https://api.github.com/repos/{owner}/{repo}/pulls"
+                
+                pr_body = f"""## Security Remediation Report
+
+This PR was automatically generated by **Matrix GitHub Autopilot** to address a security vulnerability found during a code audit.
+
+### Vulnerability Details
+- **Type**: {vulnerability_title}
+- **Artifact ID**: {vulnerability_id}
+- **Status**: Automated Fix Applied"""
+
+                if issue_number:
+                    pr_body += f"\n- **Linked Issue**: #{issue_number}\n\nCloses #{issue_number}"
+                else:
+                    pr_body += "\n"
+
+                pr_body += f"""
+                
+### Action Required
+Please review the changes and run your CI suite. This patch was generated using AI and should be verified by a developer before merging.
+
+---
+*Generated by CyberMatrix Forensics Engine*"""
+
+                pr_data = {
+                    "title": f"🛡️ [Matrix] Security Patch: {vulnerability_title}",
+                    "body": pr_body,
+                    "head": branch_name,
+                    "base": default_branch
+                }
+                
+                resp = await self._make_github_request(client, pr_url, method="POST", json_data=pr_data)
+                
+                if not resp or resp.status_code != 201:
+                    raise Exception(f"Failed to open PR: {resp.text if resp else 'No response'}")
+                
+                final_pr = resp.json()
+                logger.info(f"✅ Pull Request created: {final_pr['html_url']}")
+                
+                return {
+                    "status": "success",
+                    "pr_url": final_pr['html_url'],
+                    "pr_number": final_pr['number'],
+                    "branch": branch_name
+                }
+                
+        except Exception as e:
+            logger.error(f"GitHub Autopilot failed: {e}")
+            return {
+                "status": "failed",
+                "error": str(e)
+            }
+
     # ==================== GitHub API Methods ====================
 
     async def _get_default_branch(self, owner: str, repo: str) -> str:
@@ -605,6 +828,8 @@ class GithubSecurityAgent(BaseSecurityAgent):
             self,
             client: httpx.AsyncClient,
             url: str,
+            method: str = "GET",
+            json_data: Optional[Dict] = None,
             retry_count: int = 0
     ) -> Optional[httpx.Response]:
         """
@@ -623,11 +848,18 @@ class GithubSecurityAgent(BaseSecurityAgent):
 
         try:
             self.stats['api_calls'] += 1
-            response = await client.get(
-                url,
-                headers=headers,
-                timeout=GithubAgentConfig.DEFAULT_TIMEOUT
-            )
+            
+            if method.upper() == "GET":
+                response = await client.get(url, headers=headers, timeout=GithubAgentConfig.DEFAULT_TIMEOUT)
+            elif method.upper() == "POST":
+                response = await client.post(url, headers=headers, json=json_data, timeout=GithubAgentConfig.DEFAULT_TIMEOUT)
+            elif method.upper() == "PUT":
+                response = await client.put(url, headers=headers, json=json_data, timeout=GithubAgentConfig.DEFAULT_TIMEOUT)
+            elif method.upper() == "PATCH":
+                response = await client.patch(url, headers=headers, json=json_data, timeout=GithubAgentConfig.DEFAULT_TIMEOUT)
+            else:
+                logger.error(f"Unsupported HTTP method: {method}")
+                return None
 
             # Update rate limit info
             self._update_rate_limit_info(response)
@@ -638,7 +870,7 @@ class GithubSecurityAgent(BaseSecurityAgent):
                     wait_time = self.rate_limit_info.seconds_until_reset if self.rate_limit_info else 60
                     logger.warning(f"Rate limited. Waiting {wait_time:.0f}s before retry {retry_count + 1}")
                     await asyncio.sleep(wait_time + 1)
-                    return await self._make_github_request(client, url, retry_count + 1)
+                    return await self._make_github_request(client, url, method, json_data, retry_count + 1)
                 else:
                     logger.error("Max retries exceeded for rate limiting")
                     return None
@@ -648,7 +880,7 @@ class GithubSecurityAgent(BaseSecurityAgent):
                 wait_time = GithubAgentConfig.RETRY_BACKOFF_BASE ** retry_count
                 logger.warning(f"Server error {response.status_code}. Retrying in {wait_time}s...")
                 await asyncio.sleep(wait_time)
-                return await self._make_github_request(client, url, retry_count + 1)
+                return await self._make_github_request(client, url, method, json_data, retry_count + 1)
 
             return response
 
@@ -808,7 +1040,14 @@ Return a JSON object with this structure:
       "severity": "CRITICAL|HIGH|MEDIUM|LOW",
       "line": 123,
       "title": "Short Title",
-      "description": "Details",
+      "description": "A comprehensive technical explanation of the finding. You MUST provide exactly 4 Markdown bullet points (using '-') detailing: 1) The exact code-level vulnerability, 2) The potential exploit path, 3) The data/business risk, and 4) A clear confirmation of why this is a valid production issue.",
+      "root_cause": "Deep technical reason for the flaw",
+      "business_impact": "Impact on financial/reputational/data assets",
+      "compliance_mapping": {{
+        "owasp": "A01:2021",
+        "cwe": "CWE-89",
+        "nist": "PR.DS-1"
+      }},
       "fix": "How to fix",
       "confidence": 85
     }}
@@ -917,6 +1156,9 @@ PYTHON-SPECIFIC RULES:
                     file_path=file_path,
                     title=v.get('title', 'Security Finding'),
                     description=v.get('description', ''),
+                    root_cause=v.get('root_cause', ''),
+                    business_impact=v.get('business_impact', ''),
+                    compliance_mapping=v.get('compliance_mapping', {}),
                     evidence=v.get('evidence', f"Found in {file_path}"),
                     remediation=v.get('fix', ''),
                     ai_analysis=json.dumps(v),
@@ -1224,7 +1466,7 @@ Return a JSON object with this key "hotspots" containing a list of strings: {{"h
                 entropy = self._calculate_entropy(secret_value)
 
                 # Validate secret
-                if not self._is_valid_secret(secret_value, entropy, high_confidence):
+                if not self._is_valid_secret(secret_value, entropy, high_confidence, content, file_path):
                     continue
 
                 # Check if it's a false positive (test/example data)
@@ -1234,8 +1476,10 @@ Return a JSON object with this key "hotspots" containing a list of strings: {{"h
                 # Calculate confidence score
                 confidence = self._calculate_secret_confidence(
                     secret_value,
+                    name,
                     entropy,
                     high_confidence,
+                    file_path
                 )
 
                 secret_match = SecretMatch(
@@ -1310,7 +1554,7 @@ Return a JSON object with this key "hotspots" containing a list of strings: {{"h
 
         return entropy
 
-    def _is_valid_secret(self, secret: str, entropy: float, high_confidence: bool) -> bool:
+    def _is_valid_secret(self, secret: str, entropy: float, high_confidence: bool, content: str, file_path: str) -> bool:
         secret_lower = secret.lower()
         file_path_lower = file_path.lower()
 
@@ -1345,6 +1589,7 @@ Return a JSON object with this key "hotspots" containing a list of strings: {{"h
     def _calculate_secret_confidence(
             self,
             secret: str,
+            pattern_name: str,
             entropy: float,
             high_confidence: bool,
             file_path: str
@@ -1356,7 +1601,7 @@ Return a JSON object with this key "hotspots" containing a list of strings: {{"h
             'OpenSSH Private Key'
         ]
 
-        if any(ct in secret.pattern_name for ct in critical_types):
+        if any(ct in pattern_name for ct in critical_types):
             return Severity.CRITICAL
 
         # High: API keys and access tokens

@@ -18,6 +18,12 @@ import { Navbar } from '@/components/Navbar';
 import dynamic from 'next/dynamic';
 import { RepoScanView } from '@/components/RepoScanView';
 import { SecurityScanView } from '@/components/SecurityScanView';
+import { IncidentView } from '@/components/IncidentView';
+
+const ScanPDFExportButton = dynamic(
+    () => import('../../../components/ScanPDFExportButton'),
+    { ssr: false }
+);
 
 export default function ScanDetailPage() {
     const { id } = useParams();
@@ -26,13 +32,8 @@ export default function ScanDetailPage() {
     const [findings, setFindings] = useState<Vulnerability[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
-    const [activeTab, setActiveTab] = useState<'active' | 'suppressed'>('active');
+    const [activeTab, setActiveTab] = useState<'active' | 'suppressed' | 'incident'>('active');
     const [terminalLines, setTerminalLines] = useState<string[]>([]);
-
-    const ScanPDFExportButton = dynamic(
-        () => import('@/components/ScanPDFExportButton'),
-        { ssr: false }
-    );
 
     const counts = {
         critical: findings.filter(f => !f.is_suppressed && f.severity === 'critical').length,
@@ -209,7 +210,25 @@ export default function ScanDetailPage() {
                             </div>
                         </div>
 
-                        <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-3 flex-wrap">
+                            <Link
+                                href={`/forensics/${id}`}
+                                className="px-5 py-2.5 bg-warm-900 text-white rounded-xl text-sm font-bold uppercase tracking-widest hover:bg-black transition-all flex items-center gap-2 shadow-lg shadow-warm-900/20"
+                            >
+                                <Fingerprint className="w-4 h-4 text-accent-primary" />
+                                Forensic Intelligence
+                            </Link>
+                            <button
+                                onClick={() => {
+                                    setActiveTab('incident');
+                                    setTimeout(() => {
+                                        document.getElementById('scan-tabs')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                                    }, 0);
+                                }}
+                                className="px-5 py-2.5 bg-accent-primary text-white rounded-xl text-sm font-bold uppercase tracking-widest hover:bg-accent-primary/90 transition-all flex items-center gap-2"
+                            >
+                                Incident View
+                            </button>
                             <button
                                 onClick={() => {
                                     const exportData = {
@@ -352,7 +371,7 @@ export default function ScanDetailPage() {
                     {scan.status !== 'running' && (
                         <div>
                             {/* Tabs - Shared between both views */}
-                            <div className="flex gap-1 p-1 bg-warm-100 rounded-xl w-fit mb-8">
+                            <div id="scan-tabs" className="flex flex-wrap gap-2 p-1 bg-warm-100 rounded-xl w-fit mb-8">
                                 <button
                                     onClick={() => setActiveTab('active')}
                                     className={`px-6 py-2 rounded-lg text-xs font-bold uppercase tracking-widest transition-all ${activeTab === 'active' ? 'bg-white text-text-primary shadow-sm' : 'text-text-muted hover:text-text-secondary'}`}
@@ -365,9 +384,17 @@ export default function ScanDetailPage() {
                                 >
                                     Suppressed / FP ({counts.suppressed})
                                 </button>
+                                <button
+                                    onClick={() => setActiveTab('incident')}
+                                    className={`px-6 py-2 rounded-lg text-xs font-bold uppercase tracking-widest transition-all ${activeTab === 'incident' ? 'bg-white text-text-primary shadow-sm' : 'text-text-muted hover:text-text-secondary'}`}
+                                >
+                                    Incident View
+                                </button>
                             </div>
 
-                            {scan.scan_type === 'github_sast' ? (
+                            {activeTab === 'incident' ? (
+                                <IncidentView scan={scan} findings={findings} />
+                            ) : scan.scan_type === 'github_sast' ? (
                                 <RepoScanView
                                     scan={scan}
                                     findings={findings}

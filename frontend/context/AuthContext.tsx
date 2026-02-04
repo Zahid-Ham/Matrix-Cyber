@@ -36,27 +36,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const initAuth = async () => {
             console.log('[Auth] Initializing session...');
             try {
-                // First, ensure we have a CSRF token
-                await api.ensureCsrf();
+                // Add timeout to prevent infinite loading
+                const timeoutPromise = new Promise((_, reject) =>
+                    setTimeout(() => reject(new Error('Auth timeout')), 5000)
+                );
 
-                const user = await api.getCurrentUser();
-                setUser(user);
-                console.log('[Auth] Session restored', user.username);
+                // First, ensure we have a CSRF token
+                await Promise.race([api.ensureCsrf(), timeoutPromise]);
+
+                const userData = await Promise.race([api.getCurrentUser(), timeoutPromise]) as User;
+                setUser(userData);
+                console.log('[Auth] Session restored', userData.username);
             } catch (e) {
-                console.log('[Auth] No active session');
+                console.log('[Auth] No active session or timeout:', e);
                 setUser(null);
             } finally {
                 setIsLoading(false);
             }
         };
 
-        if (isAuthenticated) {
-            // Already explicitly authenticated (e.g. just logged in)
-            setIsLoading(false);
-        } else {
-            initAuth();
-        }
-    }, [isAuthenticated]);
+        initAuth();
+    }, []); // Run only once on mount
+
 
     const login = async (email: string, password: string) => {
         setError(null);

@@ -18,7 +18,9 @@ export default function RootLayout({
         <html lang="en">
             <body className="min-h-screen bg-bg-primary pattern-bg">
                 <AuthProvider>
-                    {children}
+                    <div suppressHydrationWarning>
+                        {children}
+                    </div>
                 </AuthProvider>
             </body>
         </html>

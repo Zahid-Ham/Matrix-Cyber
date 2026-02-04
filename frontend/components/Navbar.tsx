@@ -50,9 +50,17 @@ export function Navbar() {
                     <Link href="/repo" className="text-text-secondary hover:text-accent-primary transition-colors font-medium">
                         Repository
                     </Link>
+                    <Link href="/forensics" className="text-text-secondary hover:text-accent-primary transition-colors font-medium">
+                        Forensics
+                    </Link>
                     <Link href="/docs" className="text-text-secondary hover:text-accent-primary transition-colors font-medium">
                         Docs
                     </Link>
+                    {isAuthenticated && (
+                        <Link href="/settings" className="text-text-secondary hover:text-accent-primary transition-colors font-medium">
+                            Settings
+                        </Link>
+                    )}
                 </nav>
 
                 <div className="flex items-center gap-5">

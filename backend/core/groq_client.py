@@ -165,11 +165,16 @@ class MultiKeyGroqManager:
     
     def __init__(self) -> None:
         """Initialize manager with multiple API keys."""
+        def get_valid_key(val: str) -> Optional[str]:
+            if not val or val.strip().lower().startswith(("your_", "replace_", "gsk_your")):
+                return None
+            return val.strip()
+
         self.keys: Dict[ServiceType, str] = {
-            ServiceType.SECURITY_SCANNER: settings.groq_api_key_scanner or os.getenv("GROQ_API_KEY_SCANNER") or settings.groq_api_key,
-            ServiceType.REPO_ANALYSIS: settings.groq_api_key_repo or os.getenv("GROQ_API_KEY_REPO") or settings.groq_api_key,
-            ServiceType.CHATBOT: settings.groq_api_key_chatbot or os.getenv("GROQ_API_KEY_CHATBOT") or settings.groq_api_key,
-            ServiceType.FALLBACK: settings.groq_api_key_fallback or os.getenv("GROQ_API_KEY_FALLBACK") or settings.groq_api_key,
+            ServiceType.SECURITY_SCANNER: get_valid_key(settings.groq_api_key_scanner or os.getenv("GROQ_API_KEY_SCANNER")) or settings.groq_api_key,
+            ServiceType.REPO_ANALYSIS: get_valid_key(settings.groq_api_key_repo or os.getenv("GROQ_API_KEY_REPO")) or settings.groq_api_key,
+            ServiceType.CHATBOT: get_valid_key(settings.groq_api_key_chatbot or os.getenv("GROQ_API_KEY_CHATBOT")) or settings.groq_api_key,
+            ServiceType.FALLBACK: get_valid_key(settings.groq_api_key_fallback or os.getenv("GROQ_API_KEY_FALLBACK")) or settings.groq_api_key,
         }
         
         # Initialize clients

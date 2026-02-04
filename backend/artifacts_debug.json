@@ -1,0 +1,194 @@
+[
+  {
+    "id": "ARTI-5D742159",
+    "name": "Reconnaissance Evidence Bundle",
+    "type": "RECONNAISSANCE_DATA",
+    "metadata": {
+      "endpoints": [
+        {
+          "url": "https://github.com/iqrasayed466-star/testrepo",
+          "method": "GIT",
+          "params": {}
+        }
+      ],
+      "tech_stack": null,
+      "repository": "https://github.com/iqrasayed466-star/testrepo",
+      "scan_id": 84,
+      "ai_reasoning": "Reconnaissance complete. Analyzed https://github.com/iqrasayed466-star/testrepo and discovered 1 interactive endpoints. The technology fingerprint suggests a stack involving: modular web components."
+    }
+  },
+  {
+    "id": "ARTI-6FAD4097",
+    "name": "AI Hotspot Detection",
+    "type": "RECON_DATA",
+    "metadata": {
+      "hotspot_count": 3,
+      "repository": "https://github.com/iqrasayed466-star/testrepo",
+      "ai_reasoning": "AI logic prioritized 3 code hotspots for deep audit. These paths were selected based on high probability of containing state-management, credential-handling, or critical business logic."
+    }
+  },
+  {
+    "id": "ARTI-27BB614F",
+    "name": "Finding: Reflected XSS in Hello Endpoint",
+    "type": "GITHUB_SECURITY",
+    "metadata": {
+      "repository": "https://github.com/iqrasayed466-star/testrepo",
+      "file_path": "index.js",
+      "severity": "medium",
+      "vulnerability_type": "xss_reflected",
+      "ai_analysis": "{\"file\": \"index.js\", \"type\": \"Reflected XSS\", \"severity\": \"HIGH\", \"line\": 11, \"title\": \"Reflected XSS in Hello Endpoint\", \"description\": \"- The vulnerable code is `res.send('<h1>Hello ${name}</h1>');` which concatenates user input into the response without proper sanitization.\\n- An attacker can inject malicious scripts by manipulating the `name` query parameter.\\n- This can lead to cross-site scripting (XSS) attacks, allowing attackers to steal user data or take control of user sessions.\\n- This is a valid production issue as it can be exploited by an attacker with minimal effort.\\n- The fix is to use a template engine like EJS or Pug to render the response, or to use a library like DOMPurify to sanitize user input.\", \"root_cause\": \"Insecure use of template literals in Express.js\", \"business_impact\": \"Potential data theft or session hijacking\", \"compliance_mapping\": {\"owasp\": \"A09:2021\", \"cwe\": \"CWE-79\", \"nist\": \"PR.DS-2\"}, \"fix\": \"Use a template engine or DOMPurify to sanitize user input\", \"confidence\": 90}",
+      "remediation": "Use a template engine or DOMPurify to sanitize user input",
+      "ai_reasoning": "Detected a medium risk in `index.js`. This issue was identified via code pattern analysis and confirmed to be a potential security hotspot. Matrix Autopilot is ready to remediate this vulnerability."
+    }
+  },
+  {
+    "id": "ARTI-540A4413",
+    "name": "Finding: SQL Injection in User Retrieval",
+    "type": "GITHUB_SECURITY",
+    "metadata": {
+      "repository": "https://github.com/iqrasayed466-star/testrepo",
+      "file_path": "server.py",
+      "severity": "high",
+      "vulnerability_type": "sql_injection",
+      "ai_analysis": "{\"file\": \"server.py\", \"type\": \"SQL Injection\", \"severity\": \"CRITICAL\", \"line\": 12, \"title\": \"SQL Injection in User Retrieval\", \"description\": \"- The vulnerable code is `query = f\\\"SELECT * FROM users WHERE id = '{user_id}'\\\"` which concatenates user input into a SQL query.\\n- An attacker can exploit this by injecting malicious SQL code, such as `id=' OR 1=1 --` to retrieve all users.\\n- This vulnerability allows an attacker to access sensitive user data, potentially leading to identity theft or other malicious activities.\\n- This is a valid production issue because it allows an attacker to bypass authentication and access sensitive data.\", \"root_cause\": \"String concatenation of user input into a SQL query without proper sanitization.\", \"business_impact\": \"Potential identity theft or unauthorized access to sensitive user data.\", \"compliance_mapping\": {\"owasp\": \"A01:2021\", \"cwe\": \"CWE-89\", \"nist\": \"PR.DS-1\"}, \"fix\": \"Use parameterized queries or prepared statements to prevent SQL injection.\", \"confidence\": 90}",
+      "remediation": "Use parameterized queries or prepared statements to prevent SQL injection.",
+      "ai_reasoning": "Detected a high risk in `server.py`. This issue was identified via code pattern analysis and confirmed to be a potential security hotspot. Matrix Autopilot is ready to remediate this vulnerability."
+    }
+  },
+  {
+    "id": "ARTI-928C55AA",
+    "name": "Vulnerability: Reflected XSS in Hello Endpoint",
+    "type": "VULNERABILITY_RESULT",
+    "metadata": {
+      "agent_name": "github_security",
+      "vulnerability_type": "xss_reflected",
+      "is_vulnerable": true,
+      "severity": "medium",
+      "confidence": 58,
+      "url": "https://github.com/iqrasayed466-star/testrepo/blob/main/index.js#L11",
+      "parameter": null,
+      "method": "GET",
+      "title": "Reflected XSS in Hello Endpoint",
+      "description": "- The vulnerable code is `res.send('<h1>Hello ${name}</h1>');` which concatenates user input into the response without proper sanitization.\n- An attacker can inject malicious scripts by manipulating the `name` query parameter.\n- This can lead to cross-site scripting (XSS) attacks, allowing attackers to steal user data or take control of user sessions.\n- This is a valid production issue as it can be exploited by an attacker with minimal effort.\n- The fix is to use a template engine like EJS or Pug to render the response, or to use a library like DOMPurify to sanitize user input.",
+      "evidence": "Found in index.js",
+      "ai_analysis": "{\"file\": \"index.js\", \"type\": \"Reflected XSS\", \"severity\": \"HIGH\", \"line\": 11, \"title\": \"Reflected XSS in Hello Endpoint\", \"description\": \"- The vulnerable code is `res.send('<h1>Hello ${name}</h1>');` which concatenates user input into the response without proper sanitization.\\n- An attacker can inject malicious scripts by manipulating the `name` query parameter.\\n- This can lead to cross-site scripting (XSS) attacks, allowing attackers to steal user data or take control of user sessions.\\n- This is a valid production issue as it can be exploited by an attacker with minimal effort.\\n- The fix is to use a template engine like EJS or Pug to render the response, or to use a library like DOMPurify to sanitize user input.\", \"root_cause\": \"Insecure use of template literals in Express.js\", \"business_impact\": \"Potential data theft or session hijacking\", \"compliance_mapping\": {\"owasp\": \"A09:2021\", \"cwe\": \"CWE-79\", \"nist\": \"PR.DS-2\"}, \"fix\": \"Use a template engine or DOMPurify to sanitize user input\", \"confidence\": 90}",
+      "remediation": "Use a template engine or DOMPurify to sanitize user input",
+      "remediation_code": "",
+      "reference_links": [],
+      "owasp_category": "",
+      "cwe_id": "",
+      "compliance_mapping": {
+        "owasp": "A09:2021",
+        "cwe": "CWE-79",
+        "nist": "PR.DS-2"
+      },
+      "root_cause": "Insecure use of template literals in Express.js",
+      "business_impact": "Potential data theft or session hijacking",
+      "detected_at": "2026-02-03T13:28:59.180221+00:00",
+      "cvss_score": 4.3,
+      "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:N/I:L/A:N",
+      "cvss_metrics": {
+        "AV": "N",
+        "AC": "L",
+        "PR": "N",
+        "UI": "R",
+        "S": "U",
+        "C": "N",
+        "I": "L",
+        "A": "N"
+      },
+      "cvss_justification": {
+        "AV": "Vulnerability is remotely exploitable over the network",
+        "AC": "Exploitation requires no special conditions and is reliably reproducible",
+        "PR": "No authentication required to exploit this vulnerability",
+        "UI": "User interaction required: Victim must visit a page containing the malicious script",
+        "S": "Scope unchanged: Impact limited to same-origin browser context",
+        "C": "No confidentiality impact: Vulnerability does not expose data",
+        "I": "Low integrity impact: Attacker can modify page content in victim's browser",
+        "A": "No availability impact: Vulnerability does not affect service availability"
+      },
+      "likelihood": 0.0,
+      "impact": 0.0,
+      "exploitability_rationale": "",
+      "final_verdict": null,
+      "action_required": true,
+      "detection_confidence": 0.0,
+      "exploit_confidence": 0.0,
+      "is_suppressed": false,
+      "is_false_positive": false,
+      "suppression_reason": null,
+      "scope_impact": {},
+      "file_path": "index.js",
+      "is_finding": true,
+      "ai_reasoning": "{\"file\": \"index.js\", \"type\": \"Reflected XSS\", \"severity\": \"HIGH\", \"line\": 11, \"title\": \"Reflected XSS in Hello Endpoint\", \"description\": \"- The vulnerable code is `res.send('<h1>Hello ${name}</h1>');` which concatenates user input into the response without proper sanitization.\\n- An attacker can inject malicious scripts by manipulating the `name` query parameter.\\n- This can lead to cross-site scripting (XSS) attacks, allowing attackers to steal user data or take control of user sessions.\\n- This is a valid production issue as it can be exploited by an attacker with minimal effort.\\n- The fix is to use a template engine like EJS or Pug to render the response, or to use a library like DOMPurify to sanitize user input.\", \"root_cause\": \"Insecure use of template literals in Express.js\", \"business_impact\": \"Potential data theft or session hijacking\", \"compliance_mapping\": {\"owasp\": \"A09:2021\", \"cwe\": \"CWE-79\", \"nist\": \"PR.DS-2\"}, \"fix\": \"Use a template engine or DOMPurify to sanitize user input\", \"confidence\": 90}"
+    }
+  },
+  {
+    "id": "ARTI-DFA43AA6",
+    "name": "Vulnerability: SQL Injection in User Retrieval",
+    "type": "VULNERABILITY_RESULT",
+    "metadata": {
+      "agent_name": "github_security",
+      "vulnerability_type": "sql_injection",
+      "is_vulnerable": true,
+      "severity": "high",
+      "confidence": 58,
+      "url": "https://github.com/iqrasayed466-star/testrepo/blob/main/server.py#L12",
+      "parameter": null,
+      "method": "GET",
+      "title": "SQL Injection in User Retrieval",
+      "description": "- The vulnerable code is `query = f\"SELECT * FROM users WHERE id = '{user_id}'\"` which concatenates user input into a SQL query.\n- An attacker can exploit this by injecting malicious SQL code, such as `id=' OR 1=1 --` to retrieve all users.\n- This vulnerability allows an attacker to access sensitive user data, potentially leading to identity theft or other malicious activities.\n- This is a valid production issue because it allows an attacker to bypass authentication and access sensitive data.",
+      "evidence": "Found in server.py",
+      "ai_analysis": "{\"file\": \"server.py\", \"type\": \"SQL Injection\", \"severity\": \"CRITICAL\", \"line\": 12, \"title\": \"SQL Injection in User Retrieval\", \"description\": \"- The vulnerable code is `query = f\\\"SELECT * FROM users WHERE id = '{user_id}'\\\"` which concatenates user input into a SQL query.\\n- An attacker can exploit this by injecting malicious SQL code, such as `id=' OR 1=1 --` to retrieve all users.\\n- This vulnerability allows an attacker to access sensitive user data, potentially leading to identity theft or other malicious activities.\\n- This is a valid production issue because it allows an attacker to bypass authentication and access sensitive data.\", \"root_cause\": \"String concatenation of user input into a SQL query without proper sanitization.\", \"business_impact\": \"Potential identity theft or unauthorized access to sensitive user data.\", \"compliance_mapping\": {\"owasp\": \"A01:2021\", \"cwe\": \"CWE-89\", \"nist\": \"PR.DS-1\"}, \"fix\": \"Use parameterized queries or prepared statements to prevent SQL injection.\", \"confidence\": 90}",
+      "remediation": "Use parameterized queries or prepared statements to prevent SQL injection.",
+      "remediation_code": "",
+      "reference_links": [],
+      "owasp_category": "",
+      "cwe_id": "",
+      "compliance_mapping": {
+        "owasp": "A01:2021",
+        "cwe": "CWE-89",
+        "nist": "PR.DS-1"
+      },
+      "root_cause": "String concatenation of user input into a SQL query without proper sanitization.",
+      "business_impact": "Potential identity theft or unauthorized access to sensitive user data.",
+      "detected_at": "2026-02-03T13:29:00.056679+00:00",
+      "cvss_score": 7.5,
+      "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:H/A:N",
+      "cvss_metrics": {
+        "AV": "N",
+        "AC": "L",
+        "PR": "N",
+        "UI": "N",
+        "S": "U",
+        "C": "N",
+        "I": "H",
+        "A": "N"
+      },
+      "cvss_justification": {
+        "AV": "Vulnerability is remotely exploitable over the network",
+        "AC": "Exploitation requires no special conditions and is reliably reproducible",
+        "PR": "No authentication required to exploit this vulnerability",
+        "UI": "No user interaction required: Direct database manipulation by attacker",
+        "S": "Scope unchanged: Impact limited to database; no OS command execution detected",
+        "C": "No confidentiality impact: Vulnerability does not expose data",
+        "I": "High integrity impact: Attacker can modify filesystem, database",
+        "A": "No availability impact: Vulnerability does not affect service availability"
+      },
+      "likelihood": 0.0,
+      "impact": 0.0,
+      "exploitability_rationale": "",
+      "final_verdict": null,
+      "action_required": true,
+      "detection_confidence": 0.0,
+      "exploit_confidence": 0.0,
+      "is_suppressed": false,
+      "is_false_positive": false,
+      "suppression_reason": null,
+      "scope_impact": {},
+      "file_path": "server.py",
+      "is_finding": true,
+      "ai_reasoning": "{\"file\": \"server.py\", \"type\": \"SQL Injection\", \"severity\": \"CRITICAL\", \"line\": 12, \"title\": \"SQL Injection in User Retrieval\", \"description\": \"- The vulnerable code is `query = f\\\"SELECT * FROM users WHERE id = '{user_id}'\\\"` which concatenates user input into a SQL query.\\n- An attacker can exploit this by injecting malicious SQL code, such as `id=' OR 1=1 --` to retrieve all users.\\n- This vulnerability allows an attacker to access sensitive user data, potentially leading to identity theft or other malicious activities.\\n- This is a valid production issue because it allows an attacker to bypass authentication and access sensitive data.\", \"root_cause\": \"String concatenation of user input into a SQL query without proper sanitization.\", \"business_impact\": \"Potential identity theft or unauthorized access to sensitive user data.\", \"compliance_mapping\": {\"owasp\": \"A01:2021\", \"cwe\": \"CWE-89\", \"nist\": \"PR.DS-1\"}, \"fix\": \"Use parameterized queries or prepared statements to prevent SQL injection.\", \"confidence\": 90}"
+    }
+  }
+]

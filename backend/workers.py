@@ -154,7 +154,10 @@ async def _execute_orchestrator(db: AsyncSession, scan: Scan):
         # Orchestrator returns List[AgentResult]
         results = await orchestrator.run_scan(
             target_url=scan.target_url,
-            agents_enabled=scan.agents_enabled
+            agents_enabled=scan.agents_enabled,
+            scan_id=scan.id,
+            custom_headers=scan.custom_headers,
+            custom_cookies=scan.custom_cookies
         )
         
         # Save results

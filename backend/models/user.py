@@ -518,6 +518,7 @@ class User(Base):
     api_tokens = relationship("APIToken", back_populates="user", cascade="all, delete-orphan")
     activities = relationship("UserActivity", back_populates="user", cascade="all, delete-orphan")
     organization_memberships = relationship("OrganizationMember", back_populates="user", cascade="all, delete-orphan")
+    settings = relationship("UserSettings", back_populates="user", uselist=False, cascade="all, delete-orphan")
     
     # ========================================================================
     # INDEXES & CONSTRAINTS
