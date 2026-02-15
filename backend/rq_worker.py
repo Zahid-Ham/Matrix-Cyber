@@ -38,6 +38,24 @@ def get_redis_connection() -> Redis:
     redis_url = getattr(settings, 'redis_url', 'redis://localhost:6379')
     
     logger.info(f"Connecting to Redis: {redis_url}")
+    
+    # Fix for Python 3.12+ SSL changes and potential self-signed certs
+    if redis_url.startswith("rediss://"):
+        import ssl
+        ssl_context = ssl.create_default_context()
+        ssl_context.check_hostname = False
+        ssl_context.verify_mode = ssl.CERT_NONE
+        
+        # redis-py uses ssl_ca_certs, ssl_cert_reqs etc directly in from_url
+        # but for custom context we might need connection_pool logic or just simplified args
+        # actually, from_url parses the scheme. If we want to override SSL context:
+        return Redis.from_url(
+            redis_url,
+            ssl_cert_reqs=None,
+            ssl_ca_certs=None,
+            ssl_check_hostname=False
+        )
+        
     return Redis.from_url(redis_url)
 
 

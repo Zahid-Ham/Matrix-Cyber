@@ -8,11 +8,15 @@ import {
     Shield
 } from 'lucide-react';
 import { Scan, Vulnerability } from '@/lib/matrix_api';
+import { ThreatIntelligencePanel } from './ThreatIntelligencePanel';
+import { ExploitSimulator } from './ExploitSimulator';
+import { XSSSimulator } from './XSSSimulator';
+import { SeverityBadge } from './SeverityBadge';
 
 interface SecurityScanViewProps {
     scan: Scan;
     findings: Vulnerability[];
-    activeTab: 'active' | 'suppressed';
+    activeTab: 'active' | 'suppressed' | 'incident';
     terminalLines: string[];
 }
 
@@ -24,6 +28,8 @@ export function SecurityScanView({ scan, findings, activeTab, terminalLines }: S
         low: findings.filter(f => !f.is_suppressed && f.severity === 'low').length,
         suppressed: findings.filter(f => f.is_suppressed).length
     };
+
+    const [selectedSimVuln, setSelectedSimVuln] = React.useState<Vulnerability | null>(null);
 
     const filteredFindings = findings.filter(f =>
         activeTab === 'active' ? !f.is_suppressed : f.is_suppressed
@@ -69,33 +75,41 @@ export function SecurityScanView({ scan, findings, activeTab, terminalLines }: S
                         </div>
                     ) : (
                         filteredFindings.map((vuln) => (
-                            <div key={vuln.id} className="glass-card overflow-hidden group hover:border-accent-primary/20 transition-all duration-500">
-                                <div className="p-8">
-                                    <div className="flex items-center justify-between mb-6 pb-3 border-b border-warm-100">
+                            <div key={vuln.id} className="glass-card overflow-hidden group hover:border-accent-primary/20 transition-all duration-500 shadow-lg hover:shadow-2xl">
+                                <div className="p-10">
+                                    <div className="flex items-center justify-between mb-8">
                                         <div className="flex items-center gap-3">
-                                            <span className="text-[10px] font-mono font-bold text-accent-primary bg-accent-primary/10 px-2 py-1 rounded">
+                                            <span className="text-xs font-mono font-extrabold text-accent-primary bg-accent-primary/10 px-4 py-2 rounded-lg shadow-sm">
                                                 SEC-{String(scan.id).padStart(3, '0')}-{String(vuln.id).padStart(4, '0')}
                                             </span>
                                         </div>
-                                        <span className={`severity-tag severity-${vuln.severity} px-4 py-1.5 rounded-lg text-xs font-bold uppercase tracking-widest shadow-sm`}>
-                                            {vuln.severity}
-                                        </span>
+                                        <SeverityBadge severity={vuln.severity} size="lg" />
                                     </div>
 
                                     <div className="flex gap-6 mb-8">
                                         <div className={`w-14 h-14 rounded-2xl flex items-center justify-center flex-shrink-0 bg-accent-primary/5 text-accent-primary`}>
                                             <Globe className="w-8 h-8" />
                                         </div>
-                                        <div>
-                                            <h4 className="text-xl font-bold text-text-primary uppercase tracking-tight">
+                                        <div className="flex-1">
+                                            <h4 className="text-3xl font-extrabold text-text-primary uppercase tracking-tight mb-2">
                                                 {vuln.vulnerability_type.replace(/_/g, ' ')}
                                             </h4>
-                                            <p className="text-text-secondary mt-1 max-w-xl">{vuln.description}</p>
+                                            <p className="text-sm text-text-secondary mt-2 max-w-3xl leading-loose">{vuln.description}</p>
                                             <div className="mt-4 flex items-center gap-2">
                                                 <code className="text-[11px] bg-warm-100 px-2 py-1 rounded text-accent-primary font-mono shadow-sm">
                                                     {vuln.method} {vuln.url}
                                                 </code>
                                             </div>
+
+                                            {/* Live Threat Intelligence Panel Integration */}
+                                            {!vuln.is_suppressed && (
+                                                <div className="mt-8 pt-6 border-t border-warm-100">
+                                                    <ThreatIntelligencePanel
+                                                        vulnerability={vuln}
+                                                        onSimulateExploit={() => setSelectedSimVuln(vuln)}
+                                                    />
+                                                </div>
+                                            )}
                                         </div>
                                     </div>
 
@@ -158,6 +172,20 @@ export function SecurityScanView({ scan, findings, activeTab, terminalLines }: S
                     </div>
                 </div>
             </div>
+
+            {/* Simulator Overlay - Conditional based on vulnerability type */}
+            {selectedSimVuln && (
+                <>
+                    {selectedSimVuln.vulnerability_type.toLowerCase().includes('xss') ? (
+                        <XSSSimulator onClose={() => setSelectedSimVuln(null)} />
+                    ) : (
+                        <ExploitSimulator
+                            vulnerability={selectedSimVuln}
+                            onClose={() => setSelectedSimVuln(null)}
+                        />
+                    )}
+                </>
+            )}
         </div>
     );
 }

@@ -6,7 +6,7 @@ Provides endpoints for listing, viewing, and updating vulnerability findings.
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
-from typing import Optional
+from typing import Optional, Dict
 
 from core.database import get_db
 from core.logger import get_logger
@@ -20,6 +20,7 @@ from schemas.vulnerability import (
     VulnerabilitySummary
 )
 from api.deps import get_current_user
+from services.threat_intelligence_service import threat_intel_service
 
 logger = get_logger(__name__)
 
@@ -218,4 +219,60 @@ async def update_vulnerability(
     logger.info(f"Vulnerability {vuln_id} updated: {', '.join(changes)}")
     
     return VulnerabilityResponse.model_validate(vulnerability)
+
+
+@router.get("/{vuln_id}/intelligence/", response_model=Dict)
+async def get_threat_intelligence(
+    vuln_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Fetch live threat intelligence for a specific vulnerability.
+    If intelligence already exists and is fresh, returns it.
+    Otherwise triggers AI analysis and NVD/CISA aggregation.
+    """
+    result = await db.execute(
+        select(Vulnerability).where(Vulnerability.id == vuln_id)
+    )
+    vulnerability = result.scalar_one_or_none()
+    
+    if not vulnerability:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Vulnerability not found"
+        )
+    
+    # Verify scan belongs to user
+    scan_result = await db.execute(
+        select(Scan).where(
+            Scan.id == vulnerability.scan_id, 
+            Scan.user_id == current_user.id
+        )
+    )
+    if not scan_result.scalar_one_or_none():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Vulnerability not found"
+        )
+
+    # If intelligence already exists, return it
+    if vulnerability.threat_intelligence:
+        return vulnerability.threat_intelligence
+
+    # Generate intelligence
+    try:
+        intelligence = await threat_intel_service.get_threat_intelligence(vulnerability)
+        
+        # Save to database
+        vulnerability.threat_intelligence = intelligence
+        await db.commit()
+        
+        return intelligence
+    except Exception as e:
+        logger.error(f"Error generating threat intelligence: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to generate threat intelligence: {str(e)}"
+        )
 

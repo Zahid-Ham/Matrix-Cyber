@@ -301,6 +301,10 @@ export class MatrixApiClient {
         });
     }
 
+    async getVulnerabilityIntelligence(vulnId: number) {
+        return this.request<any>(`/api/vulnerabilities/${vulnId}/intelligence/`);
+    }
+
     // Chat endpoint
     async chat(message: string, scanId?: number) {
         return this.request<{
@@ -350,6 +354,66 @@ export class MatrixApiClient {
             method: 'DELETE',
         });
     }
+
+    // ==================== Exploit Sandbox ====================
+
+    async startExploitSandbox(vulnerabilityType: string, vulnerabilityId?: string): Promise<any> {
+        return this.request<any>('/api/exploit/start', {
+            method: 'POST',
+            body: JSON.stringify({
+                vulnerability_type: vulnerabilityType,
+                vulnerability_id: vulnerabilityId
+            })
+        });
+    }
+
+    async stopExploitSandbox(containerId: string): Promise<any> {
+        return this.request<any>(`/api/exploit/stop/${containerId}`, {
+            method: 'POST'
+        });
+    }
+
+    async executeExploitCommand(containerId: string, command: string): Promise<any> {
+        return this.request<any>('/api/exploit/command', {
+            method: 'POST',
+            body: JSON.stringify({ container_id: containerId, command })
+        });
+    }
+
+    async sendHeartbeat(containerId: string) {
+        // Fire and forget, no error throwing to avoid cluttering logs
+        // Using this.request for consistency with other API calls
+        return this.request<void>(`/api/exploit/heartbeat/${containerId}`, {
+            method: 'POST',
+        }).catch(() => { });
+    }
+
+    async checkDockerStatus(): Promise<any> {
+        return this.request<any>('/api/exploit/check-docker');
+    }
+
+    async explainExploitCommand(command: string, context: string): Promise<{ explanation: string; breakdown?: string }> {
+        return this.request<{ explanation: string; breakdown?: string }>('/api/exploit/explain', {
+            method: 'POST',
+            body: JSON.stringify({ command, context })
+        });
+    }
+
+    async explainExploitCommandV2(cmd: string): Promise<{ explanation: string }> {
+        return this.request('/api/exploit/explain', {
+            method: 'POST',
+            body: JSON.stringify({ command: cmd }),
+        });
+    }
+
+    async explainExploitOutput(output: string, context: 'terminal' | 'browser', command?: string): Promise<{ explanation: string }> {
+        return this.request('/api/exploit/explain-output', {
+            method: 'POST',
+            body: JSON.stringify({ output, context, command }),
+        });
+    }
+
+    // ==================== GitHub Token Management ====================
 
     async validateGitHubToken(): Promise<{ valid: boolean; username?: string; message: string }> {
         return this.request('/api/auth/settings/github-token/validate/', {
@@ -434,6 +498,20 @@ export interface Vulnerability {
         is_systemic: boolean;
         summary: string;
         description?: string;
+    };
+
+    threat_intelligence?: {
+        trend_score: number;
+        avg_cvss: number;
+        actively_exploited: boolean;
+        activity_level: string;
+        disclosure_count_30d: number;
+        attack_summary: string;
+        why_trending: string;
+        real_world_exploit_flow: string[];
+        business_impact: string;
+        technical_impact: string;
+        data_sources: string[];
     };
 
     detected_by?: string;

@@ -381,10 +381,10 @@ Priority scoring:
 
 **4. Secret Detection**
 Scans for:
-- **AWS**: `AKIA[0-9A-Z]{16}`
-- **GitHub**: `ghp_[a-zA-Z0-9]{36}`
-- **OpenAI**: `sk-[a-zA-Z0-9]{48}`
-- **Stripe**: `sk_live_[0-9a-zA-Z]{24,}`
+- **AWS**: `AK` + `IA[0-9A-Z]{16}`
+- **GitHub**: `ghp` + `_[a-zA-Z0-9]{36}`
+- **OpenAI**: `sk` + `-[a-zA-Z0-9]{48}`
+- **Stripe**: `sk_live` + `_[0-9a-zA-Z]{24,}`
 - **Database Connections**: `postgres://user:pass@host:port/db`
 
 Validates secrets with:

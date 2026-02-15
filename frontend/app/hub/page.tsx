@@ -1,7 +1,7 @@
 'use client';
 import React, { useState, useEffect } from 'react';
 
-import { Zap, Search, Code, FileText, ArrowRight, Activity, Database, Lock, Terminal, LogOut } from 'lucide-react';
+import { Zap, Search, Code, FileText, ArrowRight, Activity, Database, Lock, Terminal, LogOut, ShieldAlert } from 'lucide-react';
 import Link from 'next/link';
 import { SpiderWeb } from '../../components/SpiderWeb';
 import { useAuth } from '../../context/AuthContext';
@@ -22,6 +22,16 @@ export default function HubPage() {
             bg: 'bg-accent-primary/5',
             border: 'border-accent-primary/20',
             tags: ['Web', 'Active Scan']
+        },
+        {
+            title: 'Exploit Labs',
+            description: 'Practice attacks in safe, isolated Docker containers (SQLi, XSS, RCE).',
+            icon: ShieldAlert,
+            href: '/labs',
+            color: 'text-red-500',
+            bg: 'bg-red-500/5',
+            border: 'border-red-500/20',
+            tags: ['Sandbox', 'Training']
         },
         {
             title: 'Repository Analysis',

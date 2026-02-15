@@ -29,7 +29,8 @@ const nextConfig = {
           "connect-src 'self' http://localhost:8000 https://matrix-jcbh.onrender.com https://api.matrix.com",
           "frame-ancestors 'none'",
           "base-uri 'self'",
-          "form-action 'self'"
+          "form-action 'self'",
+          "frame-src 'self' http: https: data:"
         ].join('; ')
       },
       {

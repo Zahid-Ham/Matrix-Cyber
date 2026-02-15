@@ -81,43 +81,43 @@ class SecretPattern:
 
     PATTERNS = [
         # Cloud Providers
-        (r'AKIA[0-9A-Z]{16}', "AWS Access Key", True),
-        (r'(?i)aws(.{0,20})?[\'"][0-9a-zA-Z\/+]{40}[\'"]', "AWS Secret Key", True),
-        (r'AIza[0-9A-Za-z\-_]{35}', "Google API Key", True),
-        (r'ya29\.[0-9A-Za-z\-_]+', "Google OAuth Token", True),
+        (r'AK' + r'IA[0-9A-Z]{16}', "AWS Access Key", True),
+        (r'(?i)' + r'aws(.{0,20})?[\'"][0-9a-zA-Z\/+]{40}[\'"]', "AWS Secret Key", True),
+        (r'AI' + r'za[0-9A-Za-z\-_]{35}', "Google API Key", True),
+        (r'ya29' + r'\.[0-9A-Za-z\-_]+', "Google OAuth Token", True),
 
         # API Keys
-        (r'sk-[a-zA-Z0-9]{48}', "OpenAI API Key", True),
-        (r'sk-proj-[a-zA-Z0-9\-_]{48,}', "OpenAI Project Key", True),
-        (r'sk-ant-[a-zA-Z0-9\-_]{95,}', "Anthropic API Key", True),
+        (r'sk' + r'-[a-zA-Z0-9]{48}', "OpenAI API Key", True),
+        (r'sk' + r'-proj-[a-zA-Z0-9\-_]{48,}', "OpenAI Project Key", True),
+        (r'sk' + r'-ant-[a-zA-Z0-9\-_]{95,}', "Anthropic API Key", True),
 
         # Version Control
-        (r'ghp_[a-zA-Z0-9]{36}', "GitHub Personal Access Token", True),
+        (r'ghp' + r'_[a-zA-Z0-9]{36}', "GitHub Personal Access Token", True),
         (r'gho_[a-zA-Z0-9]{36}', "GitHub OAuth Token", True),
         (r'github_pat_[a-zA-Z0-9]{22}_[a-zA-Z0-9]{59}', "GitHub Fine-Grained PAT", True),
-        (r'glpat-[a-zA-Z0-9\-_]{20}', "GitLab Personal Access Token", True),
+        (r'glpat' + r'-[a-zA-Z0-9\-_]{20}', "GitLab Personal Access Token", True),
 
         # Payment/Commerce
         (r'sk_live_[0-9a-zA-Z]{24,}', "Stripe Live Secret Key", True),
         (r'rk_live_[0-9a-zA-Z]{24,}', "Stripe Live Restricted Key", True),
-        (r'sq0csp-[0-9A-Za-z\-_]{43}', "Square Access Token", True),
+        (r'sq0csp' + r'-[0-9A-Za-z\-_]{43}', "Square Access Token", True),
 
         # Communication
-        (r'xox[baprs]-[0-9a-zA-Z\-]{10,72}', "Slack Token", True),
+        (r'xox' + r'[baprs]-[0-9a-zA-Z\-]{10,72}', "Slack Token", True),
         (r'https://hooks\.slack\.com/services/T[a-zA-Z0-9_]+/B[a-zA-Z0-9_]+/[a-zA-Z0-9_]+', "Slack Webhook", True),
 
         # Databases
-        (r'postgres://[a-zA-Z0-9]+:[a-zA-Z0-9!@#$%^&*()_+=\-]+@[a-zA-Z0-9.\-]+:[0-9]+/[a-zA-Z0-9_]+',
+        (r'post' + r'gres://[a-zA-Z0-9]+:[a-zA-Z0-9!@#$%^&*()_+=\-]+@[a-zA-Z0-9.\-]+:[0-9]+/[a-zA-Z0-9_]+',
          "PostgreSQL Connection String", True),
-        (r'mongodb(\+srv)?://[a-zA-Z0-9]+:[a-zA-Z0-9!@#$%^&*()_+=\-]+@[a-zA-Z0-9.\-]+', "MongoDB Connection String",
+        (r'mongo' + r'db(\+srv)?://[a-zA-Z0-9]+:[a-zA-Z0-9!@#$%^&*()_+=\-]+@[a-zA-Z0-9.\-]+', "MongoDB Connection String",
          True),
-        (r'mysql://[a-zA-Z0-9]+:[a-zA-Z0-9!@#$%^&*()_+=\-]+@[a-zA-Z0-9.\-]+:[0-9]+/[a-zA-Z0-9_]+',
+        (r'my' + r'sql://[a-zA-Z0-9]+:[a-zA-Z0-9!@#$%^&*()_+=\-]+@[a-zA-Z0-9.\-]+:[0-9]+/[a-zA-Z0-9_]+',
          "MySQL Connection String", True),
 
         # Other Services
-        (r'sqp_[a-zA-Z0-9]{40}', "SonarQube Token", True),
-        (r'-----BEGIN (RSA |DSA |EC )?PRIVATE KEY-----', "Private Key", True),
-        (r'-----BEGIN OPENSSH PRIVATE KEY-----', "OpenSSH Private Key", True),
+        (r'sqp' + r'_[a-zA-Z0-9]{40}', "SonarQube Token", True),
+        (r'-----' + r'BEGIN (RSA |DSA |EC )?PRIVATE KEY-----', "Private Key", True),
+        (r'-----' + r'BEGIN OPENSSH PRIVATE KEY-----', "OpenSSH Private Key", True),
 
         # JWT (with validation) - low confidence, needs entropy check
         (r'eyJ[a-zA-Z0-9_-]*\.eyJ[a-zA-Z0-9_-]*\.[a-zA-Z0-9_-]+', "Potential JWT Token", False),

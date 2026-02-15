@@ -1,0 +1,16 @@
+# Lightweight vulnerable app for SQL Injection Training
+FROM python:3.9-slim
+
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y curl iputils-ping && rm -rf /var/lib/apt/lists/*
+
+# Install Flask
+RUN pip install flask
+
+# Copy the vulnerable app
+COPY app.py /app/app.py
+
+# Run it
+CMD ["python", "app.py"]

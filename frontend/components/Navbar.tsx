@@ -44,6 +44,9 @@ export function Navbar() {
                     <Link href="/scan" className="text-text-secondary hover:text-accent-primary transition-colors font-medium">
                         Scan
                     </Link>
+                    <Link href="/labs" className="text-text-secondary hover:text-accent-primary transition-colors font-medium">
+                        Labs
+                    </Link>
                     <Link href="/hub" className="text-text-secondary hover:text-accent-primary transition-colors font-medium">
                         Features
                     </Link>

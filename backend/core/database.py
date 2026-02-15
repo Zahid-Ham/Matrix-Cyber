@@ -385,6 +385,12 @@ async def _check_and_apply_migrations(conn) -> None:
                 logger.info("Migrated SQLite: Added custom_cookies")
             except Exception:
                 pass # Column likely exists
+            
+            try:
+                await conn.execute(text("ALTER TABLE vulnerabilities ADD COLUMN threat_intelligence JSON"))
+                logger.info("Migrated SQLite: Added threat_intelligence")
+            except Exception:
+                pass # Column likely exists
         else:
             # Postgres Migration
             result = await conn.execute(text(
@@ -400,6 +406,13 @@ async def _check_and_apply_migrations(conn) -> None:
             if not result.scalar():
                 logger.info("Migrating schema: Adding 'custom_cookies' to 'scans' table")
                 await conn.execute(text("ALTER TABLE scans ADD COLUMN custom_cookies JSONB"))
+            
+            result = await conn.execute(text(
+                "SELECT column_name FROM information_schema.columns WHERE table_name='vulnerabilities' AND column_name='threat_intelligence'"
+            ))
+            if not result.scalar():
+                logger.info("Migrating schema: Adding 'threat_intelligence' to 'vulnerabilities' table")
+                await conn.execute(text("ALTER TABLE vulnerabilities ADD COLUMN threat_intelligence JSONB"))
                 
     except Exception as e:
         # Don't fail startup if migration fails - might trigger other issues but keep app alive

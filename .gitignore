@@ -31,3 +31,13 @@ htmlcov/
 # Logs
 *.log
 logs/
+
+backend/tests/unit/test_github_agent.py
+
+matrix-vulnerable-demo/
+
+*.txt
+backend/artifacts_debug.json
+backend/security_report.json
+backend/api_response_42.json
+backend/benchmark_results.json

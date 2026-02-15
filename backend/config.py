@@ -64,6 +64,11 @@ class Settings(BaseSettings):
     # Redis
     redis_url: str = "redis://localhost:6379"
 
+    # Threat Intelligence
+    nvd_api_key: str = ""
+    cisa_kev_file_path: str = ""
+    threat_intelligence_cache_ttl_hours: int = 12
+
     # Production Deployment
     allowed_origins: str = "http://localhost:3000,http://127.0.0.1:3000"
     environment: str = "development" # production or development

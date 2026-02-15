@@ -99,6 +99,7 @@ class ScanType(str, Enum):
     COMPLIANCE = "compliance"
     RETEST = "retest"
     GITHUB_SAST = "github_sast"
+    REPO = "repo"
 
 
 # ============================================================================

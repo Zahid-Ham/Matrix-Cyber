@@ -1,7 +1,7 @@
 'use client';
 
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, usePathname } from 'next/navigation';
 
 import { api, User } from '../lib/matrix_api'; // Import api client and User type
 
@@ -26,6 +26,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const router = useRouter();
+    const pathname = usePathname();
 
     const [mounted, setMounted] = useState(false);
 
@@ -41,8 +42,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                     setTimeout(() => reject(new Error('Auth timeout')), 5000)
                 );
 
-                // First, ensure we have a CSRF token
-                await Promise.race([api.ensureCsrf(), timeoutPromise]);
+                // First, ensure we have a CSRF token (Skip for sandbox to prevent timeout)
+                if (!pathname?.startsWith('/sandbox')) {
+                    await Promise.race([api.ensureCsrf(), timeoutPromise]);
+                } else {
+                    console.log('[Auth] Skipping CSRF check for sandbox');
+                }
 
                 const userData = await Promise.race([api.getCurrentUser(), timeoutPromise]) as User;
                 setUser(userData);
