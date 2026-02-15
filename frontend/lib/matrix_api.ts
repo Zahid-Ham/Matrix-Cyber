@@ -389,7 +389,7 @@ export class MatrixApiClient {
     }
 
     async checkDockerStatus(): Promise<any> {
-        return this.request<any>('/api/exploit/check-docker');
+        return this.request<any>('/api/exploit/check-docker/');
     }
 
     async explainExploitCommand(command: string, context: string): Promise<{ explanation: string; breakdown?: string }> {

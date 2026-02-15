@@ -101,7 +101,7 @@ const LAB_GUIDES: Record<string, LabGuide> = {
   }
 };
 
-const API_BASE = 'http://localhost:8000/api';
+const API_BASE = '/api';
 
 // Global State for Connection Management
 const activeBuilds = new Map<string, Promise<any>>();
