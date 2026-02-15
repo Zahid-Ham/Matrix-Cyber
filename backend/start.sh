@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# Ensure we use Linux line endings
+# This script starts the Matrix Backend services
+
 echo "=== Matrix Backend Starting ==="
 echo "PORT: $PORT"
 echo "Environment: $ENVIRONMENT"
