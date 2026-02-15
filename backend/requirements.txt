@@ -42,3 +42,6 @@ pytest-asyncio>=0.23.0
 # Task Queue
 rq>=1.15.0
 redis>=5.0.0
+
+# Docker Integration
+docker>=7.0.0
