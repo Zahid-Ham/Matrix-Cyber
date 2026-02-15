@@ -19,7 +19,7 @@ COPY . .
 RUN chmod +x start.sh
 
 # Render/Railway/Koyeb will set the PORT environment variable
-ENV PORT=8080
+ENV PORT=8000
 
 # Use the startup script to run both Web + Worker
 CMD ["./start.sh"]
