@@ -3,7 +3,7 @@ const nextConfig = {
   reactStrictMode: true,
   trailingSlash: true,
   async rewrites() {
-    const backendUrl = process.env.BACKEND_URL || 'http://127.0.0.1:8000';
+    const backendUrl = process.env.BACKEND_URL || 'http://backend:8000';
     return [
       {
         source: '/api/:path*/',
@@ -26,7 +26,7 @@ const nextConfig = {
           "style-src-elem 'self' 'unsafe-inline' https://fonts.googleapis.com",
           "img-src 'self' data: https:",
           "font-src 'self' https://fonts.gstatic.com",
-          "connect-src 'self' http://localhost:8000 https://matrix-jcbh.onrender.com https://api.matrix.com",
+          "connect-src 'self' *",
           "frame-ancestors 'none'",
           "base-uri 'self'",
           "form-action 'self'",
