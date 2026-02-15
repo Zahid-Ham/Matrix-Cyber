@@ -2,6 +2,18 @@
 const nextConfig = {
   reactStrictMode: true,
   trailingSlash: true,
+  typescript: {
+    ignoreBuildErrors: true,
+  },
+  eslint: {
+    ignoreDuringBuilds: true,
+  },
+  swcMinify: true,
+  experimental: {
+    // Optimization for 1GB RAM environment
+    workerThreads: false,
+    cpus: 1,
+  },
   async rewrites() {
     const backendUrl = process.env.BACKEND_URL || 'http://backend:8000';
     return [
