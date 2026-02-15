@@ -2,35 +2,76 @@ services:
   postgres:
     image: postgres:16-alpine
     container_name: matrix-postgres
+    restart: always
     environment:
-      POSTGRES_USER: matrix
-      POSTGRES_PASSWORD: matrix_secure_pass
-      POSTGRES_DB: matrix
+      POSTGRES_USER: ${DB_USER:-matrix}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-matrix_secure_pass}
+      POSTGRES_DB: ${DB_NAME:-matrix}
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    deploy:
+      resources:
+        limits:
+          memory: 256M
     healthcheck:
       test: [ "CMD-SHELL", "pg_isready -U matrix" ]
       interval: 5s
       timeout: 5s
       retries: 5
-  # Redis is commented out since it's running locally
-  # Uncomment if you want to use containerized Redis
-  # redis:
-  #   image: redis:7-alpine
-  #   container_name: matrix-redis
-  #   ports:
-  #     - "6379:6379"
-  #   volumes:
-  #     - redis_data:/data
-  #   healthcheck:
-  #     test: ["CMD", "redis-cli", "ping"]
-  #     interval: 5s
-  #     timeout: 5s
-  #     retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: matrix-redis
+    restart: always
+    ports:
+      - "6379:6379"
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+    container_name: matrix-backend
+    restart: always
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    env_file:
+      - ./backend/.env
+    ports:
+      - "8000:8000"
+    deploy:
+      resources:
+        limits:
+          memory: 384M
+
+  frontend:
+    build:
+      context: ./frontend
+    container_name: matrix-frontend
+    restart: always
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://your_vm_ip:8000
+    deploy:
+      resources:
+        limits:
+          memory: 256M
 
 volumes:
   postgres_data:
-    # redis_data:
-
+  redis_data:
