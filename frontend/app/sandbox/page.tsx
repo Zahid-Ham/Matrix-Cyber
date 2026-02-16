@@ -152,9 +152,9 @@ export default function SandboxPage() {
     try {
       const res = await api.explainExploitCommandV2(cmd);
       setExplanation(res.explanation);
-    } catch (err) {
+    } catch (err: any) {
       console.error("Failed to explain:", err);
-      setExplanation("Error: Could not generate explanation.");
+      setExplanation(`Error: ${err.message || "Could not generate explanation."}`);
     } finally {
       setIsExplaining(false);
     }
@@ -262,7 +262,15 @@ export default function SandboxPage() {
           if (type === 'xss') labPath = '/xss-lab';
           else if (type === 'rce') labPath = '/rce-lab';
 
-          setTargetUrl(data.url + labPath);
+          // Correct localhost URL for remote access
+          try {
+            const urlObj = new URL(data.url);
+            urlObj.hostname = window.location.hostname;
+            setTargetUrl(urlObj.toString() + labPath);
+          } catch (e) {
+            console.error("URL parsing failed", e);
+            setTargetUrl(data.url + labPath);
+          }
           setStatus('connected');
           addLog(`Success! Container started.`);
           addLog(`ID: ${data.container_id.substring(0, 12)}`);
