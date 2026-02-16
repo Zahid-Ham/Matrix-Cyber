@@ -73,16 +73,16 @@ async def register(response: Response, user_data: UserCreate, db: AsyncSession =
         key="access_token",
         value=access_token,
         httponly=True,
-        secure=True,  # Required for SameSite=None
-        samesite="none",
+        secure=False,  # Allow HTTP
+        samesite="lax",
         max_age=settings.access_token_expire_minutes * 60
     )
     response.set_cookie(
         key="refresh_token",
         value=refresh_token,
         httponly=True,
-        secure=True,
-        samesite="none",
+        secure=False,
+        samesite="lax",
         max_age=7 * 24 * 60 * 60  # 7 days
     )
     
@@ -134,16 +134,16 @@ async def login(request: Request, response: Response, credentials: UserLogin, db
         key="access_token",
         value=access_token,
         httponly=True,
-        secure=True,  # Required for SameSite=None
-        samesite="none",
+        secure=False,  # Allow HTTP
+        samesite="lax",
         max_age=settings.access_token_expire_minutes * 60
     )
     response.set_cookie(
         key="refresh_token",
         value=refresh_token,
         httponly=True,
-        secure=True,
-        samesite="none",
+        secure=False,
+        samesite="lax",
         max_age=7 * 24 * 60 * 60  # 7 days
     )
     
@@ -215,16 +215,16 @@ async def refresh_token(request: Request, response: Response, db: AsyncSession =
             key="access_token",
             value=new_access_token,
             httponly=True,
-            secure=True,
-            samesite="none",
+            secure=False,
+            samesite="lax",
             max_age=settings.access_token_expire_minutes * 60
         )
         response.set_cookie(
             key="refresh_token",
             value=new_refresh_token,
             httponly=True,
-            secure=True,
-            samesite="none",
+            secure=False,
+            samesite="lax",
             max_age=7 * 24 * 60 * 60
         )
         
@@ -244,6 +244,6 @@ async def refresh_token(request: Request, response: Response, db: AsyncSession =
 @router.post("/logout/")
 async def logout(response: Response):
     """Logout user by clearing cookies."""
-    response.delete_cookie(key="access_token", httponly=True, secure=True, samesite="none")
-    response.delete_cookie(key="refresh_token", httponly=True, secure=True, samesite="none")
+    response.delete_cookie(key="access_token", httponly=True, secure=False, samesite="lax")
+    response.delete_cookie(key="refresh_token", httponly=True, secure=False, samesite="lax")
     return {"message": "Logged out successfully"}

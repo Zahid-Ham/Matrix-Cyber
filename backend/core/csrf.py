@@ -34,8 +34,8 @@ class CSRFMiddleware(BaseHTTPMiddleware):
                 key=CSRF_COOKIE_NAME,
                 value=csrf_token,
                 httponly=False,  # Must be False so JavaScript can read it
-                samesite="none",  # Required for cross-origin (Vercel -> Render)
-                secure=True,      # Required when SameSite=None
+                samesite="lax",  # Required for cross-origin (Vercel -> Render)
+                secure=False,      # Required when SameSite=None
                 path="/"
             )
             return response
