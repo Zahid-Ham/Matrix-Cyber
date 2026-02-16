@@ -66,9 +66,9 @@ class DockerExploitService:
         """
         mapping = {
             "sql_injection": "matrix-sqli-lab:latest",
-            "xss": "matrix-sqli-lab:latest",
-            "command_injection": "matrix-sqli-lab:latest",
-            "rce": "matrix-sqli-lab:latest", # Alias
+            "xss": "matrix-xss-lab:latest",
+            "command_injection": "matrix-rce-lab:latest",
+            "rce": "matrix-rce-lab:latest",
             "generic": "matrix-sqli-lab:latest"
         }
         return mapping.get(vuln_type, "matrix-sqli-lab:latest")
