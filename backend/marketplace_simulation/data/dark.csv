@@ -1,0 +1,113 @@
+Vulnerability_Type,Severity,Target_Industry,Min_USD,Max_USD,Avg_USD,Complexity,Buyer_Type,Trend,Reference,Updated
+iOS Zero-Click Chain (Full),Critical,Government,5000000,7000000,6000000,Very High,Nation-State,Increasing,[4],2026
+Android Zero-Click Chain,Critical,Government,3000000,5000000,4000000,Very High,Nation-State,Increasing,[4],2026
+WhatsApp Zero-Click RCE,Critical,Government,1500000,5000000,3250000,Very High,Nation-State,Increasing,[4],2026
+iMessage Zero-Click Chain,Critical,Government,1500000,5000000,3250000,Very High,Nation-State,Increasing,[5],2019
+Chrome One-Click Chain,Critical,Technology,2000000,3000000,2500000,High,Nation-State,Stable,[4],2026
+Safari One-Click Chain,Critical,Technology,2500000,3500000,3000000,High,Nation-State,Stable,[4],2026
+Windows Zero-Click Chain,Critical,Government,1000000,1000000,1000000,High,Nation-State,Stable,[4],2026
+Chrome RCE (Partial),High,Technology,500000,500000,500000,High,APT Groups,Stable,[4],2026
+Chrome Sandbox Escape (SBX),High,Technology,500000,500000,500000,High,APT Groups,Stable,[4],2026
+Safari RCE (Partial),High,Technology,500000,500000,500000,High,APT Groups,Stable,[4],2026
+Safari Sandbox Escape (SBX),High,Technology,500000,500000,500000,High,APT Groups,Stable,[4],2026
+Firefox Full Chain,Critical,Technology,300000,300000,300000,High,APT Groups,Stable,[4],2026
+Tor Browser RCE,Critical,Anonymity,500000,500000,500000,Very High,Nation-State,Stable,[4],2026
+MS Exchange RCE (0-Day),Critical,Enterprise,250000,250000,250000,High,APT Groups,Increasing,[4],2025
+SAP ERP RCE (0-Day),Critical,Manufacturing,250000,250000,250000,High,Nation-State,Stable,[4],2025
+VMWare ESXi RCE,Critical,Data Centers,500000,500000,500000,High,APT Groups,Increasing,[4],2025
+VMWare Workstation RCE,Critical,Technology,300000,300000,300000,High,APT Groups,Stable,[4],2025
+Hyper-V Kernel Privilege,High,Infrastructure,100000,150000,125000,High,APT Groups,Increasing,[6],2026
+MS SharePoint RCE,Critical,Enterprise,250000,250000,250000,High,APT Groups,Stable,[4],2025
+MS SQL Server RCE,Critical,Financial,150000,150000,150000,High,APT Groups,Stable,[4],2025
+Oracle Database RCE,Critical,Financial,150000,150000,150000,High,Nation-State,Stable,[4],2025
+Oracle ERP RCE,Critical,Manufacturing,200000,200000,200000,High,APT Groups,Stable,[4],2025
+Apache HTTP Server RCE,Critical,Technology,500000,500000,500000,Medium,APT Groups,Stable,[4],2025
+Nginx RCE,Critical,Technology,350000,350000,350000,Medium,APT Groups,Stable,[4],2025
+WordPress RCE (0-Day),Critical,Technology,500000,500000,500000,Medium,IABs,Stable,[4],2025
+cPanel/WHM RCE,Critical,Hosting,100000,100000,100000,Medium,IABs,Stable,[4],2025
+Cisco Router RCE,High,Infrastructure,100000,100000,100000,Medium,Nation-State,Increasing,[4],2025
+FortiNet VPN RCE,High,Technology,100000,100000,100000,Medium,Ransomware,Increasing,[4],2025
+Citrix Gateway RCE,High,Technology,100000,100000,100000,Medium,Ransomware,Increasing,[4],2025
+Sonicwall RCE,High,SME,100000,100000,100000,Medium,Ransomware,Stable,[4],2025
+Sophos Firewall RCE,High,SME,100000,100000,100000,Medium,APT Groups,Stable,[4],2025
+MOVEit (CVE-2023-34362),Critical,Managed File,50000,200000,125000,Medium,Extortionists,Stable,[7],2025
+Citrix ShareFile (24489),Critical,Storage,25000,25000,25000,Low,Ransomware,Stable,[8],2023
+Barracuda ESG (2023-2868),Critical,Technology,15000,15000,15000,Medium,APT,Stable,[8],2023
+FortiOS Auth Bypass,Critical,Technology,10000,20000,15000,Low,Ransomware,Increasing,[9],2025
+Ivanti CSA (2024-8963),Critical,General,10000,25000,17500,Low,APT Groups,Increasing,[10],2025
+React2Shell (2025-55182),Critical,Web Framework,10000,20000,15000,Medium,Miners,Increasing,S_R16,2025
+ServiceNow (CVE-2024-4879),Critical,SaaS,5000,5000,5000,Medium,IABs,Stable,S_R26,2025
+WinRAR (CVE-2023-38831),High,File Archiver,5000,10000,7500,Low,Scammers,Stable,[7],2025
+PaperCut (CVE-2023-27350),Critical,Printing,5000,15000,10000,Low,Ransomware,Stable,[7],2025
+DrayTek (CVE-2022-32548),Critical,SME Networking,5000,10000,7500,Low,Botnets,Stable,[8],2023
+Allsky WebUI (2025-63414),Critical,IoT,2000,5000,3500,Low,Vandals,Increasing,[13]1,2025
+ChurchCRM RCE (Pre-Auth),Critical,Non-Profit,1500,3000,2250,Low,Scammers,Stable,S_R41,2025
+JAY Login Bypass (WP),High,Technology,800,1500,1150,Low,Script Kiddies,Stable,[13]1,2025
+IAB: Domain Admin (Global),Critical,Financial,10000,120000,50000,Medium,Ransomware,Increasing,S_R425,2025
+IAB: US Mfg ($800M Rev),Critical,Manufacturing,25000,40000,32500,Medium,Ransomware,Stable,S_R219,2025
+IAB: Germany Mfg ($155M),High,Manufacturing,1000,5000,3000,Medium,Ransomware,Stable,S_S34,2023
+IAB: Poland Const ($200M),High,Construction,700,1500,1100,Medium,IABs,Stable,S_S34,2023
+IAB: Norway Marine ($1.1B),High,Transportation,2000,5000,3500,Medium,Ransomware,Stable,S_S34,2024
+IAB: Spain SaaS (537 users),High,Technology,300,1000,650,Low,APT Groups,Stable,S_S34,2023
+IAB: Japan E-Comm FTP,High,Retail,3000,15000,9000,Low,Fraudsters,Stable,[11],2025
+IAB: Indian Bank CRM,High,Financial,500,2000,1250,Low,Phishers,Stable,[11],2025
+IAB: North Macedonia Fed,Critical,Government,1000,3000,2000,Medium,APT Groups,Stable,S_S34,2023
+IAB: Turkey Bank ($31M),High,Financial,500,1000,750,Low,Launderers,Stable,S_S34,2023
+IAB: Croatia Plastics,High,Manufacturing,35,50,42,Low,Vandals,Stable,S_S34,2022
+IAB: Denmark BizSvc ($5M+),High,Professional,400,800,600,Low,Scammers,Stable,S_S34,2022
+IAB: UK SME (VPN Access),Medium,Retail,500,1000,750,Low,Ransomware,Stable,S_S3,2026
+IAB: Cloud Console Access,High,E-Commerce,1000,5000,2500,Low,Crypto Miners,Increasing,S_R18,2025
+IAB: Shell Access (US),High,Technology,500,5000,2750,Low,APT Groups,Stable,[12],2025
+IAB: Citrix/AnyDesk,High,Retail,150,1200,675,Low,Affiliates,Stable,S_S1,2025
+IAB: RDP Access (SME),High,General,100,1000,500,Low,Ransomware,Stable,S_R18,2025
+US Credit Card (CVV),Medium,Financial,10,40,25,Low,Scammers,Stable,[13],2025
+UK Credit Card (CVV),Medium,Financial,10,60,35,Low,Scammers,Increasing,[13],2025
+EU (Germany) Credit Card,Medium,Financial,10,50,30,Low,Scammers,Stable,[13],2025
+Australia Credit Card,Medium,Financial,15,50,32,Low,Scammers,Stable,[13],2025
+Canada Credit Card,Medium,Financial,18,40,29,Low,Scammers,Stable,[20]9,2025
+Spain Credit Card,Medium,Financial,25,25,25,Low,Scammers,Stable,[20]9,2025
+US CC High Limit (>$5k),High,Financial,110,120,115,Medium,Scammers,Stable,[13],2025
+Bank Login (>$100k Bal),High,Financial,1000,5000,3000,Medium,Launderers,Stable,[13],2025
+Bank Login (Low Bal),Medium,Financial,150,500,325,Medium,Launderers,Stable,S_R42,2025
+PayPal Account (w/ Bal),Medium,Financial,15,45,30,Low,Scammers,Stable,[20]9,2025
+Verified Kraken Account,High,Cryptocurrency,800,1170,985,High,Launderers,Increasing,[13],2025
+Verified Coinbase Account,Medium,Cryptocurrency,120,610,365,Medium,Launderers,Increasing,S_R448,2025
+Verified Binance Account,Medium,Cryptocurrency,410,410,410,Medium,Launderers,Stable,S_R448,2021
+Verified Cex.io Account,Medium,Cryptocurrency,170,170,170,Medium,Launderers,Stable,S_R448,2021
+Verified Crypto.com Acct,Medium,Cryptocurrency,250,300,275,Medium,Launderers,Stable,S_R448,2021
+Full Identity (Fullz-US),High,Government,20,100,60,Low,Fraudsters,Stable,[13],2025
+Social Security Number,Medium,Government,1,6,3.5,Low,Scammers,Stable,[13],2025
+US Passport Scan,Medium,Identity,100,100,100,Low,Identity Thief,Stable,[13],2025
+US DL Scan,Medium,Identity,70,165,117,Low,Identity Thief,Stable,[13],2025
+EU Passport (Physical),Critical,Identity,3800,3800,3800,High,Smugglers,Stable,[20]9,2025
+US ID Card (Physical),High,Identity,150,160,155,High,Identity Thief,Stable,[20]9,2025
+US Green Card (Physical),High,Identity,160,160,160,High,Identity Thief,Stable,[20]9,2025
+Russian Passport Scan,Medium,Identity,100,100,100,Low,Identity Thief,Stable,[20]9,2025
+Medical Record (PHI),High,Healthcare,50,500,275,Low,Fraudsters,Increasing,[13],2025
+Singapore Fullz (NRIC),High,Government,100,500,300,Medium,Fraudsters,Stable,[11],2025
+Ransomware Source Code,Critical,Build/Source,7,500,320000,163000,High,RaaS Groups,Stable,[14],2025
+Zeppelin Source (Cracked),Medium,Build/Source,500,500,500,Low,Script Kiddies,Stable,S_R435,2024
+Infostealer Monthly Sub,Medium,Global,15,1024,519,Low,Scammers,Stable,[14],2025
+Lumma Stealer License,High,MaaS,400,1000,700,Medium,Affiliates,Increasing,[14],2025
+RAT (Monthly Sub),High,Global,80,2171,1125,Medium,Spyware Ops,Stable,[14],2025
+Rhadamanthys RAT Sub,High,Spyware,250,250,250,Medium,Spyware Ops,Stable,S_R402,2025
+macOS Banshee Stealer,High,Apple Devices,3000,3000,3000,High,Spyware Ops,Stable,S_R42,2025
+WormGPT Monthly Sub,Medium,Phishing Tool,110,110,110,Low,Scammers,Stable,S_R402,2025
+EvilProxy Phishing Kit,High,Identity Theft,400,1000,700,Medium,Phishers,Increasing,S_R193,2025
+Tycoon2FA Phishing Kit,High,Identity Theft,500,1500,1000,Medium,Phishers,Increasing,S_R193,2025
+Loader (Avg Listing),High,Payload Delivery,50,3566,1800,Medium,Ransomware,Increasing,S_R410,2025
+Code Signing Certificate,High,Evasion,2420,2420,2420,High,Malware Devs,Stable,S_R410,2025
+AV Disabling Service,High,Evasion,1500,1500,1500,High,Ransomware,Stable,S_R410,2025
+DDoS Service (24h),Medium,General,20,100,60,Low,Vandals,Stable,S_R10,2025
+Deepfake Video (per min),Medium,Fraud/Extort,10,30,20,Medium,Fraudsters,Increasing,[20]0,2026
+Sexual Deepfake (per min),Medium,Extortion,1,1500,87,Medium,Extortionists,Increasing,S_R388,2025
+Hacker-for-Hire (Target),High,Targeted Entity,50000,800000,425000,High,Extortionists,Increasing,[15],2025
+USPublicRecord (2.9B leak),Critical,Data Broker,3500000,3500000,3500000,High,Data Brokers,Stable,S_R58,2024
+Zoom Meeting Credentials,Low,Corporate Spying,5,20,12.5,Low,Corp Spies,Stable,[16],2025
+Gmail Account,Medium,Identity,6,65,35,Low,Scammers,Stable,[13],2025
+Facebook Account,Medium,Identity,45,50,47,Low,Scammers,Stable,[13],2025
+Amazon Prime Account,Medium,Retail,35,35,35,Low,Scammers,Stable,S_R410,2025
+Netflix Subscription,Low,Entertainment,4,25,14,Low,General,Stable,[13],2025
+HackerOne Critical Bounty,Critical,White Market,6000,25000,15500,Very High,SecOps,Increasing,[17],2026
+Bugcrowd DeFi Critical,Critical,White Market,50000,200000,125000,Very High,Blockchain,Increasing,[18],2025
+Synack Average Payout,High,White Market,2500,2500,2500,High,SecOps,Stable,[19],2026

@@ -44,17 +44,20 @@ export function Navbar() {
                     <Link href="/scan" className="text-text-secondary hover:text-accent-primary transition-colors font-medium">
                         Scan
                     </Link>
+                    <Link href="/repo" className="text-text-secondary hover:text-accent-primary transition-colors font-medium">
+                        Repository
+                    </Link>
                     <Link href="/labs" className="text-text-secondary hover:text-accent-primary transition-colors font-medium">
                         Labs
                     </Link>
                     <Link href="/hub" className="text-text-secondary hover:text-accent-primary transition-colors font-medium">
                         Features
                     </Link>
-                    <Link href="/repo" className="text-text-secondary hover:text-accent-primary transition-colors font-medium">
-                        Repository
-                    </Link>
                     <Link href="/forensics" className="text-text-secondary hover:text-accent-primary transition-colors font-medium">
                         Forensics
+                    </Link>
+                    <Link href="/marketplace" className="text-text-secondary hover:text-accent-primary transition-colors font-medium">
+                        Market Analysis
                     </Link>
                     <Link href="/docs" className="text-text-secondary hover:text-accent-primary transition-colors font-medium">
                         Docs

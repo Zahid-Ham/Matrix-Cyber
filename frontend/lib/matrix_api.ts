@@ -323,10 +323,27 @@ export class MatrixApiClient {
         });
     }
 
+    async chatAboutArtifact(scanId: string | number, artifactId: string, message: string, history: any[]) {
+        return this.request<{
+            response: string;
+            metadata?: any;
+            suggested_fix?: string;
+        }>('/api/chat/artifact', {
+            method: 'POST',
+            body: JSON.stringify({
+                scan_id: typeof scanId === 'string' ? parseInt(scanId) : scanId,
+                artifact_id: artifactId,
+                message,
+                history
+            }),
+        });
+    }
+
     // Forensics & Self-Healing
-    async selfHealArtifact(scanId: string, artifactId: string) {
+    async selfHealArtifact(scanId: string, artifactId: string, custom_fix_content?: string) {
         return this.request<any>(`/api/forensics/${scanId}/artifacts/${artifactId}/self-heal/`, {
             method: 'POST',
+            body: custom_fix_content ? JSON.stringify({ custom_fix_content }) : undefined,
         });
     }
 
@@ -386,6 +403,29 @@ export class MatrixApiClient {
         return this.request<void>(`/api/exploit/heartbeat/${containerId}`, {
             method: 'POST',
         }).catch(() => { });
+    }
+
+    async getMarketplaceDashboard(): Promise<any> {
+        return this.request<any>('/api/marketplace/dashboard');
+    }
+
+    async getMarketplaceAll(limit: number = 50, offset: number = 0, scanId?: number | string): Promise<any[]> {
+        const params = new URLSearchParams({
+            limit: limit.toString(),
+            offset: offset.toString()
+        });
+        if (scanId) {
+            params.append('scan_id', scanId.toString());
+        }
+        return this.request<any[]>(`/api/marketplace/all?${params.toString()}`);
+    }
+
+    async getMarketplaceDetails(id: number | string): Promise<any> {
+        return this.request<any>(`/api/marketplace/vulnerability/${id}/details`);
+    }
+
+    async getMarketplaceExplanation(id: number | string): Promise<{ explanation: string }> {
+        return this.request<{ explanation: string }>(`/api/marketplace/vulnerability/${id}/explain`);
     }
 
     async checkDockerStatus(): Promise<any> {
@@ -484,6 +524,8 @@ export interface Vulnerability {
     is_fixed: boolean;
     is_suppressed: boolean;
     suppression_reason?: string;
+    marketplace_value_avg?: number;
+    marketplace_last_analyzed?: string;
 
     // Final Verdict Layer
     final_verdict?: string;

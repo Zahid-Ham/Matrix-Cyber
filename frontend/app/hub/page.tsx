@@ -62,6 +62,16 @@ export default function HubPage() {
             bg: 'bg-green-500/5',
             border: 'border-green-500/20',
             tags: ['Analytics', 'Trends']
+        },
+        {
+            title: 'Market Analysis',
+            description: 'Analyze current black market trends and financial impact of discovered vulnerabilities.',
+            icon: Database,
+            href: '/marketplace',
+            color: 'text-purple-500',
+            bg: 'bg-purple-500/5',
+            border: 'border-purple-500/20',
+            tags: ['Market', 'Financial']
         }
     ];
 

@@ -30,6 +30,7 @@ import {
 import Link from 'next/link';
 import { api } from '../../../lib/matrix_api';
 import { Navbar } from '@/components/Navbar';
+import { HealChat } from '@/components/HealChat';
 
 interface TimelineEvent {
     event_id: string;
@@ -101,6 +102,7 @@ export default function ForensicDetailPage() {
     const [selfHealing, setSelfHealing] = useState<string | null>(null); // artifact_id if healing
     const [reportingIssue, setReportingIssue] = useState<string | null>(null); // artifact_id if reporting
     const [healingResult, setHealingResult] = useState<any>(null);
+    const [showHealChat, setShowHealChat] = useState(false);
 
     useEffect(() => {
         const fetchData = async () => {
@@ -170,13 +172,13 @@ export default function ForensicDetailPage() {
         }
     };
 
-    const handleSelfHeal = async (artId: string) => {
+    const handleSelfHeal = async (artId: string, customCode?: string) => {
         setSelfHealing(artId);
         setHealingResult(null);
         try {
             // Use the API singleton to get automatic CSRF protection
             const scanIdStr = typeof id === 'string' ? id : (Array.isArray(id) ? id[0] : '');
-            const data = await api.selfHealArtifact(scanIdStr, artId);
+            const data = await api.selfHealArtifact(scanIdStr, artId, customCode);
             setHealingResult(data);
 
             // Update artifact status to fixed
@@ -192,6 +194,9 @@ export default function ForensicDetailPage() {
                     metadata: { ...selectedArtifact.metadata, status: 'fixed', pr_url: data.pr_url }
                 });
             }
+
+            // Auto-close chat on success to show the result in the modal
+            setTimeout(() => setShowHealChat(false), 500);
         } catch (error: any) {
             console.error('Self-healing error:', error);
             alert(`Self-healing failed: ${error.message || 'Unknown error'}`);
@@ -580,6 +585,23 @@ export default function ForensicDetailPage() {
                     )}
                 </AnimatePresence>
             </main>
+
+            {/* AI Remediation Chatbot Overlay */}
+            <HealChat
+                isOpen={showHealChat}
+                onClose={() => setShowHealChat(false)}
+                scanId={parseInt(id as string)}
+                artifactId={selectedArtifact?.artifact_evidence_id || ""}
+                artifactName={selectedArtifact?.name || "Artifact"}
+                isApplying={selfHealing === (selectedArtifact?.artifact_evidence_id || "")}
+                onApplyFix={(code) => {
+                    if (selectedArtifact?.artifact_evidence_id) {
+                        // Pass the custom code from the chat to the self-heal handler
+                        handleSelfHeal(selectedArtifact.artifact_evidence_id, code);
+                    }
+                }}
+            />
+
             {/* Artifact Detail Modal */}
             <AnimatePresence>
                 {selectedArtifact && (
@@ -820,55 +842,45 @@ export default function ForensicDetailPage() {
                                     </div>
                                 )}
 
-                                <div className="flex justify-end gap-3">
+                                <div className="flex flex-wrap items-center justify-end gap-3 pt-4 border-t border-warm-100">
                                     {(selectedArtifact.metadata?.file_path && (selectedArtifact.metadata?.url?.includes('github.com') || selectedArtifact.metadata?.repository?.includes('github.com'))) && (
                                         <>
-                                            {!selectedArtifact.metadata?.status && (
-                                                <button
-                                                    onClick={() => handleReportIssue(selectedArtifact.artifact_evidence_id)}
-                                                    disabled={reportingIssue === selectedArtifact.artifact_evidence_id}
-                                                    className="flex items-center gap-2 px-6 py-2.5 rounded-xl font-bold text-sm bg-indigo-600 text-white shadow-lg hover:shadow-xl active:scale-95 disabled:opacity-50 transition-all"
-                                                >
-                                                    {reportingIssue === selectedArtifact.artifact_evidence_id ? (
-                                                        <>
-                                                            <RefreshCw className="w-4 h-4 animate-spin" />
-                                                            Reporting Issue...
-                                                        </>
-                                                    ) : (
-                                                        <>
-                                                            <Activity className="w-4 h-4" />
-                                                            Report to GitHub Issue
-                                                        </>
-                                                    )}
-                                                </button>
-                                            )}
+                                            <button
+                                                onClick={() => setShowHealChat(true)}
+                                                className="px-6 py-2.5 bg-gradient-to-r from-accent-primary to-indigo-600 text-white font-bold text-sm rounded-xl shadow-lg hover:shadow-xl hover:scale-[1.02] transition-all flex items-center gap-2"
+                                            >
+                                                <Cpu className="w-4 h-4" /> Discuss & Fix
+                                            </button>
 
-                                            {selectedArtifact.metadata?.status === 'reported' && !healingResult && (
-                                                <button
-                                                    onClick={() => handleSelfHeal(selectedArtifact.artifact_evidence_id)}
-                                                    disabled={selfHealing === selectedArtifact.artifact_evidence_id}
-                                                    className="flex items-center gap-2 px-6 py-2.5 rounded-xl font-bold text-sm bg-purple-600 text-white shadow-lg hover:shadow-xl active:scale-95 disabled:opacity-50 transition-all"
-                                                >
-                                                    {selfHealing === selectedArtifact.artifact_evidence_id ? (
-                                                        <>
-                                                            <RefreshCw className="w-4 h-4 animate-spin" />
-                                                            AI Autopilot Patching...
-                                                        </>
-                                                    ) : (
-                                                        <>
-                                                            <Zap className="w-4 h-4" />
-                                                            Approve & Apply AI Fix
-                                                        </>
-                                                    )}
-                                                </button>
-                                            )}
+                                            <button
+                                                onClick={() => handleReportIssue(selectedArtifact.artifact_evidence_id)}
+                                                disabled={reportingIssue === selectedArtifact.artifact_evidence_id || selectedArtifact.metadata?.status === 'reported'}
+                                                className="px-6 py-2.5 bg-white text-text-primary border border-warm-200 font-bold text-sm rounded-xl shadow-sm hover:shadow-md hover:bg-warm-50 transition-all flex items-center gap-2 disabled:opacity-50"
+                                            >
+                                                {reportingIssue === selectedArtifact.artifact_evidence_id ? (
+                                                    <RefreshCw className="w-4 h-4 animate-spin" />
+                                                ) : selectedArtifact.metadata?.status === 'reported' ? (
+                                                    <CheckCircle className="w-4 h-4 text-green-600" />
+                                                ) : (
+                                                    <AlertTriangle className="w-4 h-4 text-accent-primary" />
+                                                )}
+                                                {selectedArtifact.metadata?.status === 'reported' ? 'Reported to GitHub' : 'Report Issue'}
+                                            </button>
 
-                                            {selectedArtifact.metadata?.status === 'fixed' && (
-                                                <div className="flex items-center gap-2 px-6 py-2.5 rounded-xl font-bold text-sm bg-green-100 text-green-700">
+                                            <button
+                                                onClick={() => handleSelfHeal(selectedArtifact.artifact_evidence_id)}
+                                                disabled={selfHealing === selectedArtifact.artifact_evidence_id || selectedArtifact.metadata?.status === 'fixed'}
+                                                className="px-6 py-2.5 bg-white text-green-600 border border-green-100 font-bold text-sm rounded-xl shadow-sm hover:shadow-md hover:bg-green-50 transition-all flex items-center gap-2 disabled:opacity-50"
+                                            >
+                                                {selfHealing === selectedArtifact.artifact_evidence_id ? (
+                                                    <RefreshCw className="w-4 h-4 animate-spin" />
+                                                ) : selectedArtifact.metadata?.status === 'fixed' ? (
                                                     <CheckCircle className="w-4 h-4" />
-                                                    Fix Applied
-                                                </div>
-                                            )}
+                                                ) : (
+                                                    <Zap className="w-4 h-4" />
+                                                )}
+                                                {selectedArtifact.metadata?.status === 'fixed' ? 'Healed & Patch Applied' : 'Autonomous Patch'}
+                                            </button>
                                         </>
                                     )}
                                     <button

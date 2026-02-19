@@ -82,3 +82,6 @@ class Settings(BaseSettings):
 def get_settings() -> Settings:
     """Get cached settings instance."""
     return Settings()
+
+# Export settings instance for direct imports
+settings = get_settings()

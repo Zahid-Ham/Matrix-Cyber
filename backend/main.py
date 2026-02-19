@@ -16,6 +16,7 @@ from slowapi.middleware import SlowAPIMiddleware
 from config import get_settings
 from core.database import init_db, close_db
 from api import auth_router, scans_router, vulnerabilities_router, chatbot_router, forensics_router, test_bench, github_settings_router, exploit, exploit_explanation
+from marketplace_simulation.controllers.marketplace_router import router as marketplace_router
 from agents.orchestrator import orchestrator
 
 settings = get_settings()
@@ -299,6 +300,7 @@ app.include_router(vulnerabilities_router, prefix="/api")
 app.include_router(chatbot_router, prefix="/api")
 app.include_router(forensics_router, prefix="/api")
 app.include_router(github_settings_router, prefix="/api")
+app.include_router(marketplace_router, prefix="/api")
 app.include_router(test_bench, prefix="/api")
 app.include_router(exploit.router, prefix="/api")
 app.include_router(exploit_explanation.router, prefix="/api")

@@ -72,43 +72,43 @@ class SecretPattern:
 
     PATTERNS = [
         # Cloud Providers
-        (r'AK' + r'IA[0-9A-Z]{16}', "AWS Access Key", True),
-        (r'(?i)' + r'aws(.{0,20})?[\'"][0-9a-zA-Z\/+]{40}[\'"]', "AWS Secret Key", True),
-        (r'AI' + r'za[0-9A-Za-z\-_]{35}', "Google API Key", True),
-        (r'ya29' + r'\.[0-9A-Za-z\-_]+', "Google OAuth Token", True),
+        (r'AKIA[0-9A-Z]{16}', "AWS Access Key", True),
+        (r'(?i)aws(.{0,20})?[\'"][0-9a-zA-Z\/+]{40}[\'"]', "AWS Secret Key", True),
+        (r'AIza[0-9A-Za-z\-_]{35}', "Google API Key", True),
+        (r'ya29\.[0-9A-Za-z\-_]+', "Google OAuth Token", True),
 
         # API Keys
-        (r'sk' + r'-[a-zA-Z0-9]{48}', "OpenAI API Key", True),
-        (r'sk' + r'-proj-[a-zA-Z0-9\-_]{48,}', "OpenAI Project Key", True),
-        (r'sk' + r'-ant-[a-zA-Z0-9\-_]{95,}', "Anthropic API Key", True),
+        (r'sk-[a-zA-Z0-9]{48}', "OpenAI API Key", True),
+        (r'sk-proj-[a-zA-Z0-9\-_]{48,}', "OpenAI Project Key", True),
+        (r'sk-ant-[a-zA-Z0-9\-_]{95,}', "Anthropic API Key", True),
 
         # Version Control
-        (r'ghp' + r'_[a-zA-Z0-9]{36}', "GitHub Personal Access Token", True),
+        (r'ghp_[a-zA-Z0-9]{36}', "GitHub Personal Access Token", True),
         (r'gho_[a-zA-Z0-9]{36}', "GitHub OAuth Token", True),
         (r'github_pat_[a-zA-Z0-9]{22}_[a-zA-Z0-9]{59}', "GitHub Fine-Grained PAT", True),
-        (r'glpat' + r'-[a-zA-Z0-9\-_]{20}', "GitLab Personal Access Token", True),
+        (r'glpat-[a-zA-Z0-9\-_]{20}', "GitLab Personal Access Token", True),
 
         # Payment/Commerce
         (r'sk_live_[0-9a-zA-Z]{24,}', "Stripe Live Secret Key", True),
         (r'rk_live_[0-9a-zA-Z]{24,}', "Stripe Live Restricted Key", True),
-        (r'sq0csp' + r'-[0-9A-Za-z\-_]{43}', "Square Access Token", True),
+        (r'sq0csp-[0-9A-Za-z\-_]{43}', "Square Access Token", True),
 
         # Communication
-        (r'xox' + r'[baprs]-[0-9a-zA-Z\-]{10,72}', "Slack Token", True),
+        (r'xox[baprs]-[0-9a-zA-Z\-]{10,72}', "Slack Token", True),
         (r'https://hooks\.slack\.com/services/T[a-zA-Z0-9_]+/B[a-zA-Z0-9_]+/[a-zA-Z0-9_]+', "Slack Webhook", True),
 
         # Databases
-        (r'post' + r'gres://[a-zA-Z0-9]+:[a-zA-Z0-9!@#$%^&*()_+=\-]+@[a-zA-Z0-9.\-]+:[0-9]+/[a-zA-Z0-9_]+',
+        (r'postgres://[a-zA-Z0-9]+:[a-zA-Z0-9!@#$%^&*()_+=\-]+@[a-zA-Z0-9.\-]+:[0-9]+/[a-zA-Z0-9_]+',
          "PostgreSQL Connection String", True),
-        (r'mongo' + r'db(\+srv)?://[a-zA-Z0-9]+:[a-zA-Z0-9!@#$%^&*()_+=\-]+@[a-zA-Z0-9.\-]+', "MongoDB Connection String",
+        (r'mongodb(\+srv)?://[a-zA-Z0-9]+:[a-zA-Z0-9!@#$%^&*()_+=\-]+@[a-zA-Z0-9.\-]+', "MongoDB Connection String",
          True),
-        (r'my' + r'sql://[a-zA-Z0-9]+:[a-zA-Z0-9!@#$%^&*()_+=\-]+@[a-zA-Z0-9.\-]+:[0-9]+/[a-zA-Z0-9_]+',
+        (r'mysql://[a-zA-Z0-9]+:[a-zA-Z0-9!@#$%^&*()_+=\-]+@[a-zA-Z0-9.\-]+:[0-9]+/[a-zA-Z0-9_]+',
          "MySQL Connection String", True),
 
         # Other Services
-        (r'sqp' + r'_[a-zA-Z0-9]{40}', "SonarQube Token", True),
-        (r'-----' + r'BEGIN (RSA |DSA |EC )?PRIVATE KEY-----', "Private Key", True),
-        (r'-----' + r'BEGIN OPENSSH PRIVATE KEY-----', "OpenSSH Private Key", True),
+        (r'sqp_[a-zA-Z0-9]{40}', "SonarQube Token", True),
+        (r'-----BEGIN (RSA |DSA |EC )?PRIVATE KEY-----', "Private Key", True),
+        (r'-----BEGIN OPENSSH PRIVATE KEY-----', "OpenSSH Private Key", True),
 
         # JWT (with validation) - low confidence, needs entropy check
         (r'eyJ[a-zA-Z0-9_-]*\.eyJ[a-zA-Z0-9_-]*\.[a-zA-Z0-9_-]+', "Potential JWT Token", False),
@@ -666,7 +666,16 @@ class GithubSecurityAgent(BaseSecurityAgent):
                 "issue_number": issue_data["number"]
             }
 
-    async def execute_self_healing(self, owner: str, repo: str, file_path: str, vulnerability_title: str, vulnerability_id: str, issue_number: Optional[int] = None) -> Dict[str, Any]:
+    async def execute_self_healing(
+        self, 
+        owner: str, 
+        repo: str, 
+        file_path: str, 
+        vulnerability_title: str, 
+        vulnerability_id: str, 
+        issue_number: Optional[int] = None,
+        custom_fix_content: Optional[str] = None
+    ) -> Dict[str, Any]:
         """Orchestrate the Self-Healing flow: fix code, push branch, open PR."""
         logger.info(f"🚀 Initializing GitHub Autopilot for {file_path} in {owner}/{repo}")
         
@@ -684,10 +693,16 @@ class GithubSecurityAgent(BaseSecurityAgent):
                 original_content = base64.b64decode(file_data['content']).decode('utf-8')
                 original_sha = file_data['sha']
                 
-                # 2. Generate Fix via AI
-                fixed_content = await self.generate_remediation_patch(file_path, original_content, vulnerability_title)
+                # 2. Generate Fix (AI or Custom)
+                if custom_fix_content:
+                    logger.info("Using custom fix provided by user via chat")
+                    fixed_content = custom_fix_content
+                else:
+                    logger.info("Generating fix via AI...")
+                    fixed_content = await self.generate_remediation_patch(file_path, original_content, vulnerability_title)
+                
                 if not fixed_content or len(fixed_content) < 10:
-                    raise Exception("AI generated an invalid or empty patch")
+                    raise Exception("Invalid or empty patch content")
                 
                 # 3. Create a new branch
                 branch_name = f"matrix-fix-{vulnerability_id[:8]}-{datetime.now().strftime('%H%M%S')}"
@@ -702,12 +717,19 @@ class GithubSecurityAgent(BaseSecurityAgent):
                 
                 # Create branch
                 create_ref_url = f"https://api.github.com/repos/{owner}/{repo}/git/refs"
-                resp = await self._make_github_request(client, create_ref_url, method="POST", json_data={
+                create_ref_payload = {
                     "ref": f"refs/heads/{branch_name}",
                     "sha": base_sha
-                })
+                }
+                logger.info(f"Creating branch: URL={create_ref_url}, Payload={create_ref_payload}")
+                
+                resp = await self._make_github_request(client, create_ref_url, method="POST", json_data=create_ref_payload)
                 
                 if not resp or resp.status_code != 201:
+                    logger.error(f"Failed to create branch. Status: {resp.status_code if resp else 'None'}. Response: {resp.text if resp else 'None'}")
+                    # If 404, detailed error
+                    if resp and resp.status_code == 404:
+                         raise Exception(f"Failed to create branch: 404 Not Found. Please verify the repository exists and the token has 'repo' scope access to {owner}/{repo}.")
                     raise Exception(f"Failed to create branch: {resp.text if resp else 'No response'}")
                 
                 # 4. Push the fix
@@ -738,11 +760,14 @@ This PR was automatically generated by **Matrix GitHub Autopilot** to address a 
                     pr_body += f"\n- **Linked Issue**: #{issue_number}\n\nCloses #{issue_number}"
                 else:
                     pr_body += "\n"
+                    
+                if custom_fix_content:
+                    pr_body += "\n\n> **Note**: This fix includes custom modifications approved by the user via Matrix Chat."
 
                 pr_body += f"""
                 
 ### Action Required
-Please review the changes and run your CI suite. This patch was generated using AI and should be verified by a developer before merging.
+Please review the changes and run your CI suite. This patch should be verified by a developer before merging.
 
 ---
 *Generated by CyberMatrix Forensics Engine*"""
@@ -773,6 +798,119 @@ Please review the changes and run your CI suite. This patch was generated using 
             logger.error(f"GitHub Autopilot failed: {e}")
             return {
                 "status": "failed",
+                "error": str(e)
+            }
+
+    async def chat_about_fix(
+        self,
+        owner: str,
+        repo: str,
+        file_path: str,
+        vulnerability_title: str,
+        user_message: str,
+        history: List[Dict[str, str]] = []
+    ) -> Dict[str, Any]:
+        """
+        Discuss a vulnerability fix with the user and propose/refine code.
+        """
+        # 1. Fetch file content for context
+        current_content = ""
+        fetch_error = None
+        
+        try:
+            default_branch = await self._get_default_branch(owner, repo)
+            async with httpx.AsyncClient() as client:
+                content_url = f"https://api.github.com/repos/{owner}/{repo}/contents/{file_path}?ref={default_branch}"
+                resp = await self._make_github_request(client, content_url)
+                if resp and resp.status_code == 200:
+                    file_data = resp.json()
+                    current_content = base64.b64decode(file_data['content']).decode('utf-8')
+                else:
+                    status = resp.status_code if resp else "No Response"
+                    fetch_error = f"Could not fetch file content from GitHub (Status: {status}). Please check your GitHub token permissions."
+                    current_content = f"(Error: {fetch_error})"
+        except Exception as e:
+            fetch_error = f"Error fetching file content: {str(e)}"
+            current_content = f"(Error: {fetch_error})"
+            
+        # If we failed to get content, we should probably warn the user or the LLM
+        if fetch_error:
+            # If it's a permission error, straightforwardly tell the user
+            if "403" in fetch_error or "401" in fetch_error:
+                 return {
+                    "response": f"⚠️ **Access Denied**: I cannot read the file `{file_path}` from GitHub. \n\n**Reason**: {fetch_error}\n\nPlease update your GitHub Token in settings with `repo` scope (for private repos) or `public_repo` scope.",
+                    "error": fetch_error
+                }
+
+        # 2. Construct Prompt
+        system_prompt = f"""You are a Senior Security Engineer assisting a user in fixing a vulnerability.
+        
+REPOSITORY: {owner}/{repo}
+FILE: {file_path}
+VULNERABILITY: {vulnerability_title}
+
+CURRENT FILE CONTENT:
+```
+{current_content}
+```
+
+GOAL: Help the user understand the vulnerability and refine a fix.
+If the user asks for a fix or modification, generate the FULL VALID CODE for the file.
+If you generate code, put the COMPLETE file content inside a single ```python (or appropriate lang) block.
+Do not use placeholders like "...rest of code...". The user may want to apply this code directly.
+"""
+
+        messages = [{"role": "system", "content": system_prompt}]
+        
+        # Add history
+        for msg in history:
+            messages.append({"role": msg["role"], "content": msg["content"]})
+            
+        # Add current message
+        messages.append({"role": "user", "content": user_message})
+        
+        # 3. Call LLM
+        try:
+            from core.groq_client import groq_manager, ServiceType, ModelTier
+            
+            if not groq_manager.is_configured:
+                 return {
+                    "response": "⚠️ **Configuration Error**: Groq AI is not configured. Please add `GROQ_API_KEY` to your environment variables.",
+                    "error": "Groq not configured"
+                }
+                
+            # Use the correct generate method
+            result = await groq_manager.generate(
+                service=ServiceType.CHATBOT,
+                messages=messages,
+                tier=ModelTier.CRITICAL 
+            )
+            
+            response_content = result["content"]
+            
+            # Extract suggested fix if present (look for code blocks)
+            suggested_fix = None
+            code_blocks = re.findall(r'```(?:\w+)?\n(.*?)```', response_content, re.DOTALL)
+            if code_blocks:
+                # Assume the largest code block or the last one is the full file fix
+                # Heuristic: if a code block is > 50% of original size, it's likely the full file
+                for block in code_blocks:
+                    if len(block) > len(current_content) * 0.5:
+                        suggested_fix = block.strip()
+            
+            return {
+                "response": response_content,
+                "suggested_fix": suggested_fix,
+                "metadata": {
+                    "file_path": file_path,
+                    "vulnerability": vulnerability_title
+                }
+            }
+            
+        except Exception as e:
+            logger.error(f"Error in chat_about_fix: {e}")
+            return {
+                "response": "I encountered an error while processing your request. Please try again.",
                 "error": str(e)
             }
 

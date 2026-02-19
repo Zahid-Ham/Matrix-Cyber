@@ -1,0 +1,73 @@
+Cost_Category,Industry,Company_Size,Min_Cost,Max_Cost,Avg_Cost,Calculation_Method,Real_World_Example,Source,Year
+Benchmark,Healthcare,Global,7420000,11600000,9770000,Total Lifecycle,Change Healthcare,S_R33,2025
+Benchmark,Finance,Global,5560000,6080000,5900000,Total Lifecycle,Habib Bank AG,S_R33,2025
+Benchmark,Industrial,Global,4470000,5560000,5000000,Total Lifecycle,MKS Instruments,S_R33,2025
+Benchmark,Technology,Global,4000000,5120000,4790000,Total Lifecycle,Red Hat GitLab,S_R149,2025
+Benchmark,Hospitality,Global,3820000,4730000,4275000,Total Lifecycle,Marriott/MGM,S_R149,2025
+Benchmark,Education,Global,3800000,4210000,4005000,Total Lifecycle,Uni of Penn,S_R149,2025
+Benchmark,Retail,Global,2960000,3630000,3540000,Total Lifecycle,VF Corp,S_R33,2025
+Benchmark,Pharmaceuticals,Global,4820000,5100000,4960000,Total Lifecycle,Big Pharma,S_R62,2024
+Benchmark,Energy,Global,4780000,5290000,5035000,Total Lifecycle,Colonial Pipeline,S_R62,2024
+Benchmark,Transportation,Global,3590000,4430000,4010000,Total Lifecycle,Qantas/bpost,S_R62,2024
+Benchmark,Communications,Global,3620000,4090000,3855000,Total Lifecycle,SK Telecom,S_R62,2024
+Benchmark,Professional Svcs,Global,144/rec,144/rec,4730000,Total Lifecycle,Capita Ransom,S_R61,2025
+Benchmark,Government,Global,1652/vuln,1652/vuln,10220000,Total Lifecycle,Nevada State,S_R26,2025
+Regional Premium,United States,All,9360000,10220000,10220000,Region average,T-Mobile Settle,S_R33,2025
+Regional Premium,Middle East,All,7290000,8900000,7290000,Region average,Oil & Gas sector,S_R33,2025
+Regional Premium,Canada,All,4840000,6980000,5910000,Region average,MGM Canada,S_R33,2025
+Regional Premium,European Union,All,4030000,4840000,4440000,Region average,Vodafone Germany,S_R33,2025
+Regional Premium,UK,All,4140000,4530000,4335000,Region average,Royal Mail,S_R33,2025
+Regional Premium,Germany,All,4030000,5310000,4670000,Region average,German Electronics,S_R33,2025
+Regional Premium,Japan,All,3650000,4190000,3920000,Region average,Renesas Ransom,S_R33,2025
+Regional Premium,South Korea,All,3650000,3650000,3650000,Region average,SK Telecom,[20],2025
+Regional Premium,ASEAN,All,3230000,3670000,3450000,Region average,SingHealth,S_R33,2025
+Regional Premium,Australia,All,2550000,2780000,2665000,Region average,Qantas Breach,S_R33,2025
+Regional Premium,Latin America,All,1220000,4160000,2690000,Region average,Brazilian Fintech,S_R33,2025
+Regional Premium,India,All,2.3M,2.6M,2.5M,Region average,Ed-Tech Breach,S_R51,2025
+Downtime_Per_Min,Retail,Enterprise,5600,16000,14056,Per minute loss,Amazon Prime Day,S_R271,2025
+Downtime_Per_Min,Finance,Enterprise,12000,155000,84000,Per minute loss,Capital One,S_R271,2025
+Downtime_Per_Hr,Healthcare,Enterprise,1700000,3200000,2450000,EHR system halt,Ascension Health,S_R271,2025
+Downtime_Per_Hr,Manufacturing,Enterprise,100000,500000,260000,Per hour rev,Auto Assembly,S_R271,2025
+Downtime_Per_Hr,Industrial,Enterprise,100000,100000,100000,Per hour rev,MKS Inst,S_R217,2026
+Downtime_Per_Hr,SMB,Small,1000,25000,5000,Per hour rev,SME Ransomware,S_R277,2025
+Downtime_Per_Hr,Retail,Large,5000000,5000000,5000000,Peak Hour,Cyber Monday,S_R268,2025
+Data_PII,General,PerRec,128,264,160,Per PII record,Equifax Settle,S_R33,2025
+Data_IP,Technology,PerRec,156,178,173,Per IP record,GitLab Red Hat,S_R33,2024
+Data_PHI,Healthcare,PerRec,142,200,185,Per health record,Change Health,S_R61,2025
+Data_ShadowAI,General,PerRec,160,166,166,AI added premium,Shadow AI usage,S_R151,2025
+Data_Employee,General,PerRec,138,138,138,Per staff record,Capita Breach,S_R61,2025
+Forensics,Enterprise,Large,50000,150000,100000,Engagement fee,SolarWinds Audit,S_R61,2025
+Forensics,SMB,Small,4000,10000,7000,Per engagement,Ransomware Triage,S_R351,2025
+Notification,General,PerBreach,390000,430000,410000,Crisis mailing,Mass victim,S_R33,2025
+Monitoring,General,PerUser,10,30,20,Annual sub,Equifax Victims,S_R33,2024
+Legal_Settlement,Healthcare,PerRec,1000,5000,75,Cash payout,Northeast Rehab,S_R278,2026
+Legal_Settlement,General,Enterprise,31.5M,31.5M,31.5M,Lump settlement,T-Mobile FCC,[13]7,2024
+Legal_Settlement,Healthcare,Enterprise,18M,18M,18M,Lump settlement,Yale New Haven,[11]5,2025
+Legal_Settlement,Retail,Enterprise,1.25M,59M,18M,ICO Fine/Settle,Capita Ransom,S_R163,2025
+Legal_Settlement,Social,Enterprise,1.4B,1.4B,1.4B,Biometric Settle,Meta Texas,S_R290,2025
+Fine_GDPR,General,Global,2% Rev,4% Rev,2.8M avg,Turnover %,TikTok fine,S_R163,2025
+Fine_GDPR,Social,Enterprise,530M,600M,565M,Data Transfer,TikTok Irish,S_R163,2025
+Fine_GDPR,Ad-Tech,Enterprise,42M,42M,42M,Profiling,Criteo Fine,S_R91,2025
+Fine_GDPR,Retail,Enterprise,35M,35M,35M,Staff Monitoring,H&M Germany,S_S15,2020
+Fine_GDPR,SaaS,Enterprise,310M,310M,310M,Advertising,LinkedIn Fine,S_R290,2024
+Fine_GDPR,Transp,Enterprise,290M,324M,307M,Data Transfer,Uber Netherlands,S_R290,2024
+Fine_HIPAA,Healthcare,US,100,50000,1.5M cap,Violation tiers,OCR Settlements,S_R48,2025
+Fine_HIPAA,Healthcare,State,6.75M,6.75M,6.75M,State AG Fine,Major US Health,S_R48,2024
+Fine_HIPAA,Healthcare,System,800000,800000,800000,Violation,BayCare System,S_R48,2025
+Fine_HIPAA,Retail,System,1.5M,1.5M,1.5M,Credential Stuff,Warby Parker,S_R48,2024
+Fine_PCI,Retail,Monthly,5000,100000,25000,Monthly unpatch,Payment Proc,[11]6,2025
+Audit_SOC2,SaaS,SME,10000,80000,40000,Preparation+CPA,SOC 2 Fail,S_R185,2025
+Audit_Prep_Lead,General,SME,50000,75000,62500,Internal FTE,Senior Project,S_R185,2025
+Insider_Threat,General,Enterprise,485000,17400000,2700000,Annual loss,Coinbase Insider,S_R106,2025
+Shadow_AI_Premium,General,Corporate,200000,670000,435000,Added breach,Shadow AI use,S_R33,2025
+Insurance_Churn,General,SMB,15%,100%,25%,Premium hike %,Ransomware claim,[13]3,2025
+Detection_Speed,Under 200d,Global,-1.39M,-1.76M,-1.5M,Savings mod,Rapid AI detect,S_R33,2025
+AI_Defense_Savings,Global,Corporate,-1.9M,-2.2M,-2.0M,Automation sav,SOC AI deploy,S_R33,2025
+Ransom_Payment_Avg,General,Enterprise,1.0M,2.0M,1.5M,Paid ransom,Fortune 500,S_R272,2025
+Ransom_Recovery,General,Enterprise,1.53M,2.73M,2.13M,Non-ransom cost,Sophos Stats,S_R40,2025
+Ransom_Downtime,General,Enterprise,24d,24d,24d,Avg outage,Statista Ransom,S_R272,2025
+Customer_Churn,General,Corporate,3%,7%,4%,Lost user base,Brand Trust,[11]6,2025
+Acquisition_Penalty,Technology,Enterprise,350M,350M,350M,Price reduction,Yahoo/Verizon,S_R144,2025
+Employee_Prod_Loss,General,Hourly,150,1000,575,Exec rate/hr,Crisis Meet,[11]6,2025
+Reputation_Repair,General,Corporate,100000,1000000,550000,PR/Comms,Crisis PR,S_R189,2025
+Audit_Prep_FTE,General,SME,50000,75000,62500,Staff cost,6-mo lead,S_R249,2025
