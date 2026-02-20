@@ -13,12 +13,11 @@ from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 
-from config import get_settings
-from core.database import init_db, close_db
-from api import auth_router, scans_router, vulnerabilities_router, chatbot_router, forensics_router, test_bench, github_settings_router, exploit, exploit_explanation
-from marketplace_simulation.controllers.marketplace_router import router as marketplace_router
-from agents.orchestrator import orchestrator
+from core.csrf import CSRFMiddleware
+from core.api_limiter import limiter
+from core.logger import get_logger
 
+logger = get_logger(__name__)
 settings = get_settings()
 
 
