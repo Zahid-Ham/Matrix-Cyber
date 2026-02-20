@@ -252,6 +252,13 @@ async def health_check():
 
 
 @app.get("/api/csrf/", tags=["Security"])
+async def get_csrf_token():
+    """Endpoint to provide a CSRF token for the frontend."""
+    from core.security import create_csrf_token
+    return {"status": "ok", "csrf_token": create_csrf_token()}
+
+
+@app.get("/api/csrf/", tags=["Security"])
 async def get_csrf_init(request: Request, response: Response):
     """Endpoint to initialize CSRF cookie for the frontend."""
     from core.security import create_csrf_token, verify_csrf_token
