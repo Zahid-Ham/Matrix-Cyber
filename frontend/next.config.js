@@ -8,22 +8,19 @@ const nextConfig = {
   eslint: {
     ignoreDuringBuilds: true,
   },
-  swcMinify: true,
-  experimental: {
-    // Optimization for 1GB RAM environment
-    workerThreads: false,
-    cpus: 1,
-  },
   async rewrites() {
+    // In Docker, we use the service name 'backend'
     const backendUrl = process.env.BACKEND_URL || 'http://localhost:8000';
+    console.log('Next.js Proxy using backendUrl:', backendUrl);
+    
     return [
-      {
-        source: '/api/:path*',
-        destination: `${backendUrl}/api/:path*`,
-      },
       {
         source: '/api/:path*/',
         destination: `${backendUrl}/api/:path*/`,
+      },
+      {
+        source: '/api/:path*',
+        destination: `${backendUrl}/api/:path*`,
       },
     ];
   },
@@ -56,10 +53,6 @@ const nextConfig = {
       {
         key: 'Referrer-Policy',
         value: 'strict-origin-when-cross-origin'
-      },
-      {
-        key: 'Permissions-Policy',
-        value: 'camera=(), microphone=(), geolocation=()'
       },
       {
         key: 'Cache-Control',
