@@ -274,12 +274,7 @@ async def get_csrf_token(request: Request, response: Response):
     
     return {
         "status": "ok",
-        "csrf_token": csrf_token
-    }
-    
-    return {
-        "status": "CSRF initialized",
-        "csrf_token": csrf_token,  # Crucial: Return in body for JS
+        "csrf_token": csrf_token,
         "app": settings.app_name,
         "version": "1.0.0"
     }
