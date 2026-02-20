@@ -15,8 +15,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application code
 COPY . .
 
-# Make startup script executable
-RUN chmod +x start.sh
+# Make startup script executable and fix line endings
+RUN sed -i 's/\r$//' start.sh && chmod +x start.sh
 
 # Render/Railway/Koyeb will set the PORT environment variable
 ENV PORT=8000
