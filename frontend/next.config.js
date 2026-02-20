@@ -14,24 +14,17 @@ const nextConfig = {
     },
   },
   async rewrites() {
-    // Priority: 1. Environment Variable, 2. Docker internal name, 3. Localhost fallback
-    const backendUrl = process.env.BACKEND_URL || 'http://backend:8000';
-    
-    // Explicitly handle common production failure case
-    const finalBackendUrl = backendUrl.includes('localhost') && process.env.NODE_ENV === 'production' 
+    // In production (Docker), always prefer the internal service name
+    const backendUrl = process.env.NODE_ENV === 'production' 
       ? 'http://backend:8000' 
-      : backendUrl;
-
-    console.log('[Proxy] Configuring rewrites with backend:', finalBackendUrl);
+      : (process.env.BACKEND_URL || 'http://localhost:8000');
+    
+    console.log('[Proxy] Configuring rewrites with destination:', backendUrl);
     
     return [
       {
-        source: '/api/:path*/',
-        destination: `${finalBackendUrl}/api/:path*/`,
-      },
-      {
         source: '/api/:path*',
-        destination: `${finalBackendUrl}/api/:path*`,
+        destination: `${backendUrl}/api/:path*`,
       },
     ];
   },

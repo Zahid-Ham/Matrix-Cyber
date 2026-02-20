@@ -2,7 +2,15 @@
  * API client for Matrix backend
  */
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || '';
+// detect if we are in browser and if API_BASE is internal
+let API_BASE = process.env.NEXT_PUBLIC_API_URL || '';
+if (typeof window !== 'undefined') {
+    // In browser: if API_BASE is empty OR contains internal docker names, force relative path
+    if (!API_BASE || API_BASE.includes('backend') || API_BASE.includes('localhost')) {
+        console.log('[API] Browser detected internal/empty API_BASE, switching to relative paths.');
+        API_BASE = '';
+    }
+}
 console.log('[API] Initialized with API_BASE:', API_BASE);
 
 interface ApiError {

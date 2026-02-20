@@ -31,9 +31,11 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["Referrer-Policy"] = "no-referrer-when-downgrade"
         
         if not settings.debug:
-            response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
-            response.headers["Content-Security-Policy"] = "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'; upgrade-insecure-requests"
-            
+            # Temporarily disabled for HTTP-only IP deployment
+            # response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+            # response.headers["Content-Security-Policy"] = "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'; upgrade-insecure-requests"
+            response.headers["X-Frame-Options"] = "SAMEORIGIN" # Allow frames for labs
+            pass
         return response
 
 @asynccontextmanager
