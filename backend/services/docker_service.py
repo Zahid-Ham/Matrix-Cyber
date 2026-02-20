@@ -127,7 +127,7 @@ class DockerExploitService:
             return {
                 "session_id": session_id,
                 "container_id": container.id,
-                "url": f"http://localhost:{host_port}",
+                "url": f"{settings.base_url}:{host_port}",
                 "status": "running",
                 "type": vuln_type
             }

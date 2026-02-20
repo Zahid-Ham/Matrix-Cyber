@@ -8,9 +8,9 @@ from functools import lru_cache
 class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
     
-    # Application
     app_name: str = "Matrix"
     debug: bool = True
+    base_url: str = "http://35.226.18.153" # Base URL for sandbox links
     
     # LLM Cost Optimization
     enable_llm_cache: bool = True
