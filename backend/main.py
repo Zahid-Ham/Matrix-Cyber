@@ -252,15 +252,8 @@ async def health_check():
 
 
 @app.get("/api/csrf/", tags=["Security"])
-async def get_csrf_token():
-    """Endpoint to provide a CSRF token for the frontend."""
-    from core.security import create_csrf_token
-    return {"status": "ok", "csrf_token": create_csrf_token()}
-
-
-@app.get("/api/csrf/", tags=["Security"])
-async def get_csrf_init(request: Request, response: Response):
-    """Endpoint to initialize CSRF cookie for the frontend."""
+async def get_csrf_token(request: Request, response: Response):
+    """Endpoint to initialize CSRF cookie and return it for the frontend."""
     from core.security import create_csrf_token, verify_csrf_token
     
     # Check if we have a valid token in request cookies
@@ -269,7 +262,7 @@ async def get_csrf_init(request: Request, response: Response):
     # If not valid, generate a new one
     if not csrf_token or not verify_csrf_token(csrf_token):
         csrf_token = create_csrf_token()
-        # Also set it as a cookie for browsers that DO allow them
+        # Also set it as a cookie
         response.set_cookie(
             key="CSRF-TOKEN",
             value=csrf_token,
@@ -278,6 +271,11 @@ async def get_csrf_init(request: Request, response: Response):
             secure=False,
             path="/"
         )
+    
+    return {
+        "status": "ok",
+        "csrf_token": csrf_token
+    }
     
     return {
         "status": "CSRF initialized",
