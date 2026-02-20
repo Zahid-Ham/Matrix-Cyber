@@ -15,4 +15,4 @@ echo "Worker started with PID: $WORKER_PID"
 
 # Start the web server (this is critical)
 echo "Starting Gunicorn on port $PORT..."
-gunicorn main:app -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:$PORT --log-level info
+gunicorn main:app -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:$PORT --workers 1 --log-level info
