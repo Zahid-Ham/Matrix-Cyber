@@ -1,8 +1,3 @@
-"""
-Vulnerability API routes.
-
-Provides endpoints for listing, viewing, and updating vulnerability findings.
-"""
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
@@ -279,4 +274,3 @@ async def get_threat_intelligence(
             status_code=500,
             detail=f"Failed to generate threat intelligence: {str(e)}"
         )
-
